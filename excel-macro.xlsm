@@ -1,0 +1,186 @@
+Sub GenerateUANReports()
+    Dim wsExport As Worksheet, wsByName As Worksheet, wsByER As Worksheet
+    Dim wsByDate As Worksheet, wsBySupporter As Worksheet
+    Dim lastRow As Long, i As Long
+    Dim startDateInput As String, endDateInput As String
+    Dim startDate As Variant, endDate As Variant
+    Dim campaignDateObj As Date, monthYear As String
+    Dim campaignID As String, campaignDate As String, supporterID As String
+
+    ' Set references
+    Set wsExport = ThisWorkbook.Sheets("export")
+    
+    ' Create or clear reporting sheets
+    Set wsByName = CreateOrClearSheet("reporting-by-name")
+    Set wsByER = CreateOrClearSheet("reporting-by-er")
+    Set wsByDate = CreateOrClearSheet("reporting-by-date")
+    Set wsBySupporter = CreateOrClearSheet("reporting-by-supporter-id")
+
+    ' Get last row of data
+    lastRow = wsExport.Cells(wsExport.Rows.Count, 1).End(xlUp).Row
+
+    ' Ask for date filters
+    startDateInput = InputBox("Enter Start Date (YYYY-MM-DD) or leave blank for no limit", "Start Date")
+    endDateInput = InputBox("Enter End Date (YYYY-MM-DD) or leave blank for no limit", "End Date")
+
+    ' Convert input to date only if valid, otherwise keep as Empty
+    If IsDate(startDateInput) Then startDate = CDate(startDateInput) Else startDate = Empty
+    If IsDate(endDateInput) Then endDate = CDate(endDateInput) Else endDate = Empty
+
+    ' Use Arrays for counting
+    Dim campaignIDs() As String, campaignCounts() As Integer
+    Dim dateKeys() As String, dateCounts() As Integer
+    Dim supporterIDs() As String, supporterCounts() As Integer
+    Dim erLabels() As String, erCounts() As Integer
+    Dim totalCampaigns As Integer, totalDates As Integer, totalSupporters As Integer, totalER As Integer
+    totalCampaigns = 0: totalDates = 0: totalSupporters = 0: totalER = 0
+
+    ' Find column indexes
+    Dim colCampaign As Integer, colDate As Integer, colSupporter As Integer
+    Dim colER6 As Integer, colER7 As Integer, colER8 As Integer, colER10 As Integer
+    colCampaign = FindColumn(wsExport, "Campaign ID")
+    colDate = FindColumn(wsExport, "Campaign Date")
+    colSupporter = FindColumn(wsExport, "Supporter ID")
+    colER6 = FindColumn(wsExport, "External Reference 6")
+    colER7 = FindColumn(wsExport, "External Reference 7")
+    colER8 = FindColumn(wsExport, "External Reference 8")
+    colER10 = FindColumn(wsExport, "External Reference 10")
+
+    ' Validate required columns
+    If colCampaign = -1 Or colDate = -1 Or colSupporter = -1 Then
+        MsgBox "Error: One or more required columns are missing.", vbExclamation
+        Exit Sub
+    End If
+
+    ' Loop through data
+    For i = 2 To lastRow
+        ' Skip blank rows
+        If IsEmpty(wsExport.Cells(i, colCampaign)) And IsEmpty(wsExport.Cells(i, colDate)) And IsEmpty(wsExport.Cells(i, colSupporter)) Then GoTo NextIteration
+        
+        campaignID = Trim(wsExport.Cells(i, colCampaign).Value)
+        campaignDate = Trim(wsExport.Cells(i, colDate).Value)
+        supporterID = Trim(wsExport.Cells(i, colSupporter).Value)
+
+        ' Convert date format
+        If IsDate(campaignDate) Then
+            campaignDateObj = CDate(campaignDate)
+            
+            ' Apply date filtering
+            If (Not IsEmpty(startDate) And campaignDateObj < startDate) Or _
+               (Not IsEmpty(endDate) And campaignDateObj > endDate) Then GoTo NextIteration
+        Else
+            GoTo NextIteration
+        End If
+
+        ' Store formatted date (YYYY-MM)
+        monthYear = Format(campaignDateObj, "YYYY-MM")
+
+        ' Count occurrences using arrays
+        totalCampaigns = CountOccurrences(campaignIDs, campaignCounts, totalCampaigns, campaignID)
+        totalSupporters = CountOccurrences(supporterIDs, supporterCounts, totalSupporters, supporterID)
+        totalDates = CountOccurrences(dateKeys, dateCounts, totalDates, monthYear)
+
+        ' Process External Reference fields
+        ProcessExternalReference wsExport.Cells(i, colER6), erLabels, erCounts, totalER
+        ProcessExternalReference wsExport.Cells(i, colER7), erLabels, erCounts, totalER
+        ProcessExternalReference wsExport.Cells(i, colER8), erLabels, erCounts, totalER
+        ProcessExternalReference wsExport.Cells(i, colER10), erLabels, erCounts, totalER
+
+NextIteration:
+    Next i
+
+    ' Write reports
+    WriteArrayToSheet wsByName, "Campaign ID", "Count", campaignIDs, campaignCounts, totalCampaigns
+    WriteArrayToSheet wsBySupporter, "Supporter ID", "Count", supporterIDs, supporterCounts, totalSupporters
+    WriteArrayToSheet wsByDate, "Month", "Count", dateKeys, dateCounts, totalDates
+    WriteArrayToSheet wsByER, "External Reference", "Count", erLabels, erCounts, totalER
+
+    MsgBox "✅ Your UAN Reports have been updated!", vbInformation
+End Sub
+
+' Create or clear a sheet
+Function CreateOrClearSheet(sheetName As String) As Worksheet
+    Dim ws As Worksheet
+    On Error Resume Next
+    Set ws = ThisWorkbook.Sheets(sheetName)
+    On Error GoTo 0
+    If ws Is Nothing Then
+        Set ws = ThisWorkbook.Sheets.Add
+        ws.Name = sheetName
+    Else
+        ws.Cells.Clear
+    End If
+    Set CreateOrClearSheet = ws
+End Function
+
+' Find column by header
+Function FindColumn(ws As Worksheet, headerName As String) As Integer
+    Dim col As Integer
+    For col = 1 To ws.Cells(1, ws.Columns.Count).End(xlToLeft).Column
+        If Trim(ws.Cells(1, col).Value) = headerName Then
+            FindColumn = col
+            Exit Function
+        End If
+    Next col
+    FindColumn = -1
+End Function
+
+' Process External Reference Data
+Sub ProcessExternalReference(cellValue As Range, ByRef keys() As String, ByRef counts() As Integer, ByRef total As Integer)
+    Dim externalData As String, splitData As Variant, label As String, values As Variant
+    externalData = Trim(cellValue.Value)
+    
+    If externalData <> "" Then
+        ' Extract label & values
+        splitData = Split(externalData, ": ")
+        If UBound(splitData) = 1 Then
+            label = Trim(splitData(0))
+            values = Split(Trim(splitData(1)), ",")
+            Dim i As Integer
+            For i = LBound(values) To UBound(values)
+                total = CountOccurrences(keys, counts, total, label & ": " & Trim(values(i)))
+            Next i
+        End If
+    End If
+End Sub
+
+' Function to add occurrences
+Function CountOccurrences(ByRef keys() As String, ByRef counts() As Integer, ByVal total As Integer, ByVal key As String) As Integer
+    Dim i As Integer
+    ' Check if key exists
+    For i = 1 To total
+        If keys(i) = key Then
+            counts(i) = counts(i) + 1
+            CountOccurrences = total
+            Exit Function
+        End If
+    Next i
+    ' If not found, add new key
+    total = total + 1
+    ReDim Preserve keys(1 To total)
+    ReDim Preserve counts(1 To total)
+    keys(total) = key
+    counts(total) = 1
+    CountOccurrences = total
+End Function
+
+' Write Array Data to a Sheet
+Sub WriteArrayToSheet(ws As Worksheet, col1Header As String, col2Header As String, keys() As String, counts() As Integer, total As Integer)
+    Dim rowIndex As Integer
+    Dim i As Integer
+    
+    ' Write headers
+    ws.Cells(1, 1).Value = col1Header
+    ws.Cells(1, 2).Value = col2Header
+    ws.Rows(1).Font.Bold = True
+    ws.Columns(1).HorizontalAlignment = xlLeft
+    ws.Columns(2).HorizontalAlignment = xlLeft
+
+    ' Write data
+    rowIndex = 2
+    For i = 1 To total
+        ws.Cells(rowIndex, 1).Value = "'" & keys(i)  ' Force text format
+        ws.Cells(rowIndex, 2).Value = counts(i)
+        rowIndex = rowIndex + 1
+    Next i
+End Sub
