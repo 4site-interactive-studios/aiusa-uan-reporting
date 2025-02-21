@@ -23,7 +23,7 @@ Sub GenerateUANReports()
     startDateInput = InputBox("Enter Start Date (YYYY-MM-DD) or leave blank for no limit", "Start Date")
     endDateInput = InputBox("Enter End Date (YYYY-MM-DD) or leave blank for no limit", "End Date")
 
-    ' Convert input to date only if valid, otherwise keep as Empty
+    ' Convert input to date only if valid
     If IsDate(startDateInput) Then startDate = CDate(startDateInput) Else startDate = Empty
     If IsDate(endDateInput) Then endDate = CDate(endDateInput) Else endDate = Empty
 
@@ -75,7 +75,7 @@ Sub GenerateUANReports()
         ' Store formatted date (YYYY-MM)
         monthYear = Format(campaignDateObj, "YYYY-MM")
 
-        ' Count occurrences using arrays
+        ' Count occurrences
         totalCampaigns = CountOccurrences(campaignIDs, campaignCounts, totalCampaigns, campaignID)
         totalSupporters = CountOccurrences(supporterIDs, supporterCounts, totalSupporters, supporterID)
         totalDates = CountOccurrences(dateKeys, dateCounts, totalDates, monthYear)
@@ -95,7 +95,13 @@ NextIteration:
     WriteArrayToSheet wsByDate, "Month", "Count", dateKeys, dateCounts, totalDates
     WriteArrayToSheet wsByER, "External Reference", "Count", erLabels, erCounts, totalER
 
-    MsgBox "✅ Your UAN Reports have been updated!", vbInformation
+    ' Sort each reporting sheet
+    SortSheet wsByName, 1
+    SortSheet wsBySupporter, 1
+    SortSheet wsByDate, 1
+    SortSheet wsByER, 1
+
+    MsgBox "? Your UAN Reports have been updated!", vbInformation
 End Sub
 
 ' Create or clear a sheet
@@ -125,7 +131,22 @@ Function FindColumn(ws As Worksheet, headerName As String) As Integer
     FindColumn = -1
 End Function
 
-' Process External Reference Data
+' Sorting function
+Sub SortSheet(ws As Worksheet, sortColumn As Integer)
+    Dim lastRow As Long
+    lastRow = ws.Cells(ws.Rows.Count, sortColumn).End(xlUp).Row
+    If lastRow > 1 Then
+        ws.Sort.SortFields.Clear
+        ws.Sort.SortFields.Add2 key:=ws.Cells(2, sortColumn), SortOn:=xlSortOnValues, Order:=xlAscending
+        With ws.Sort
+            .SetRange ws.Range("A1:B" & lastRow)
+            .Header = xlYes
+            .MatchCase = False
+            .Orientation = xlTopToBottom
+            .Apply
+        End With
+    End If
+End Sub
 Sub ProcessExternalReference(cellValue As Range, ByRef keys() As String, ByRef counts() As Integer, ByRef total As Integer)
     Dim externalData As String, splitData As Variant, label As String, values As Variant
     externalData = Trim(cellValue.Value)
@@ -143,10 +164,10 @@ Sub ProcessExternalReference(cellValue As Range, ByRef keys() As String, ByRef c
         End If
     End If
 End Sub
-
-' Function to add occurrences
+' Function to count occurrences of a value in an array
 Function CountOccurrences(ByRef keys() As String, ByRef counts() As Integer, ByVal total As Integer, ByVal key As String) As Integer
     Dim i As Integer
+    
     ' Check if key exists
     For i = 1 To total
         If keys(i) = key Then
@@ -155,6 +176,7 @@ Function CountOccurrences(ByRef keys() As String, ByRef counts() As Integer, ByV
             Exit Function
         End If
     Next i
+
     ' If not found, add new key
     total = total + 1
     ReDim Preserve keys(1 To total)
@@ -163,8 +185,6 @@ Function CountOccurrences(ByRef keys() As String, ByRef counts() As Integer, ByV
     counts(total) = 1
     CountOccurrences = total
 End Function
-
-' Write Array Data to a Sheet
 Sub WriteArrayToSheet(ws As Worksheet, col1Header As String, col2Header As String, keys() As String, counts() As Integer, total As Integer)
     Dim rowIndex As Integer
     Dim i As Integer
