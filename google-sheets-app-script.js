@@ -136,9 +136,11 @@ function writeSortedData(sheet, headers, data) {
 
   sheet.appendRow(headers);
   sheet.getRange(1, 2).setHorizontalAlignment("right"); // Right-align the "Count" header
+  sheet.getRange(1, 1).setHorizontalAlignment("left"); // Left-align the "Year" header (or similar columns)
 
   sortedData.forEach(([key, count], index) => {
     sheet.appendRow([key, count]);
+    sheet.getRange(index + 2, 1).setHorizontalAlignment("left"); // Left-align each "Year" cell
     sheet.getRange(index + 2, 2).setHorizontalAlignment("right"); // Right-align each "Count" cell
   });
 
@@ -151,15 +153,18 @@ function writeSortedData(sheet, headers, data) {
 function writeSupporterData(sheet, data) {
   var sortedData = Object.entries(data).sort(([a], [b]) => a.localeCompare(b));
 
+  sheet.clear();
   sheet.appendRow(["Supporter ID", "Supporter Email", "Count"]);
-  sheet.getRange(1, 3).setHorizontalAlignment("right"); // Right-align the "Count" header
+  sheet.getRange(1, 1).setHorizontalAlignment("left"); // Left-align "Supporter ID" header
+  sheet.getRange(1, 3).setHorizontalAlignment("right"); // Right-align "Count" header
 
   sortedData.forEach(([key, count], index) => {
     var splitKey = key.split(" - ");
     var supporterID = splitKey[0];
     var supporterEmail = splitKey.length > 1 ? splitKey[1] : "";
     sheet.appendRow([supporterID, supporterEmail, count]);
-    sheet.getRange(index + 2, 3).setHorizontalAlignment("right"); // Right-align each "Count" cell
+    sheet.getRange(index + 2, 1).setHorizontalAlignment("left"); // Left-align "Supporter ID" cells
+    sheet.getRange(index + 2, 3).setHorizontalAlignment("right"); // Right-align "Count" cells
   });
 
   if (sheet.getLastRow() > 1) {
