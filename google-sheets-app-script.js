@@ -9,79 +9,68 @@ function processCampaignData() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var ui = SpreadsheetApp.getUi();
 
-  var exportSheet = ss.getSheetByName("export");
-  var reportByNameSheet = ss.getSheetByName("reporting-by-name");
-  var reportByERSheet = ss.getSheetByName("reporting-by-er");
-  var reportByDateSheet = ss.getSheetByName("reporting-by-date");
-  var reportBySupporterSheet = ss.getSheetByName("reporting-by-supporter-id");
+  var processedSheet = ss.getSheetByName("processed-export");
+  var reportByNameSheet = getOrCreateSheet(ss, "by-name");
+  var reportByCaseSheet = getOrCreateSheet(ss, "by-case-number");
+  var reportByCountrySheet = getOrCreateSheet(ss, "by-country");
+  var reportByTopicSheet = getOrCreateSheet(ss, "by-topic");
+  var reportByYearSheet = getOrCreateSheet(ss, "by-year");
+  var reportByTypeSheet = getOrCreateSheet(ss, "by-type");
+  var reportByDateSheet = getOrCreateSheet(ss, "by-date");
+  var reportBySupporterSheet = getOrCreateSheet(ss, "by-supporter");
 
-  if (!exportSheet) {
-    ui.alert("The 'export' sheet is required.");
+  if (!processedSheet) {
+    ui.alert("The 'processed-export' sheet is required.");
     return;
   }
-  if (!reportByNameSheet) {
-    reportByNameSheet = ss.insertSheet("reporting-by-name");
-  } else {
-    reportByNameSheet.clear();
-  }
-  if (!reportByERSheet) {
-    reportByERSheet = ss.insertSheet("reporting-by-er");
-  } else {
-    reportByERSheet.clear();
-  }
-  if (!reportByDateSheet) {
-    reportByDateSheet = ss.insertSheet("reporting-by-date");
-  } else {
-    reportByDateSheet.clear();
-  }
-  if (!reportBySupporterSheet) {
-    reportBySupporterSheet = ss.insertSheet("reporting-by-supporter-id");
-  } else {
-    reportBySupporterSheet.clear();
-  }
 
-  // Prompt for Start and End Dates
   var startDateInput = ui.prompt("Enter Start Date (YYYY-MM-DD) or leave blank for no limit").getResponseText().trim();
   var endDateInput = ui.prompt("Enter End Date (YYYY-MM-DD) or leave blank for no limit").getResponseText().trim();
 
   var startDate = startDateInput ? new Date(startDateInput) : null;
   var endDate = endDateInput ? new Date(endDateInput) : null;
 
-  var data = exportSheet.getDataRange().getValues();
+  var data = processedSheet.getDataRange().getValues();
   var headers = data[0];
+
   var campaignCol = headers.indexOf("Campaign ID");
   var campaignDateCol = headers.indexOf("Campaign Date");
   var supporterCol = headers.indexOf("Supporter ID");
+  var emailCol = headers.indexOf("Supporter Email");
 
   var columns = {
-    "External Reference 6": headers.indexOf("External Reference 6"),
-    "External Reference 7": headers.indexOf("External Reference 7"),
-    "External Reference 8": headers.indexOf("External Reference 8"),
-    "External Reference 10": headers.indexOf("External Reference 10")
+    "Country": headers.indexOf("External Reference 6 (Country)"),
+    "Case Number": headers.indexOf("External Reference 7 (Case Number)"),
+    "Topics": headers.indexOf("External Reference 8 (Topics)"),
+    "Year": headers.indexOf("External Reference 10 (Year)"),
+    "Type": headers.indexOf("External Reference 10 (Type)")
   };
 
-  if (campaignCol === -1 || campaignDateCol === -1 || supporterCol === -1 || Object.values(columns).includes(-1)) {
+  if (campaignCol === -1 || campaignDateCol === -1 || supporterCol === -1 || emailCol === -1 || Object.values(columns).includes(-1)) {
     ui.alert("One or more required columns are missing.");
     return;
   }
 
   var campaignCounts = {};
-  var results = {};
+  var caseCounts = {};
+  var countryCounts = {};
+  var topicCounts = {};
+  var yearCounts = {};
+  var typeCounts = {};
   var dateCounts = {};
-  var supporterCounts = {}; // Stores counts of unique supporters
+  var supporterCounts = {};
 
   for (var i = 1; i < data.length; i++) {
     var campaignID = data[i][campaignCol];
     var campaignDateRaw = data[i][campaignDateCol];
     var supporterID = data[i][supporterCol];
+    var supporterEmail = data[i][emailCol] || "";
     var campaignDate = "";
 
     if (campaignDateRaw) {
-      if (campaignDateRaw instanceof Date) {
-        campaignDate = Utilities.formatDate(campaignDateRaw, Session.getScriptTimeZone(), "yyyy-MM-dd");
-      } else {
-        campaignDate = campaignDateRaw.toString().trim();
-      }
+      campaignDate = campaignDateRaw instanceof Date
+        ? Utilities.formatDate(campaignDateRaw, Session.getScriptTimeZone(), "yyyy-MM-dd")
+        : campaignDateRaw.toString().trim();
     } else {
       continue;
     }
@@ -89,78 +78,119 @@ function processCampaignData() {
     var campaignDateObj = new Date(campaignDate);
     if (isNaN(campaignDateObj)) continue;
 
-    // Apply date filtering
     if ((startDate && campaignDateObj < startDate) || (endDate && campaignDateObj > endDate)) continue;
 
-    // ✅ Only count Campaign ID if it meets the date filter
     if (campaignID) {
       campaignCounts[campaignID] = (campaignCounts[campaignID] || 0) + 1;
     }
 
-    // ✅ Only count Supporter ID if it meets the date filter
+    var supporterKey = supporterID + " - " + supporterEmail;
     if (supporterID) {
-      supporterCounts[supporterID] = (supporterCounts[supporterID] || 0) + 1;
+      supporterCounts[supporterKey] = (supporterCounts[supporterKey] || 0) + 1;
     }
 
-    // Group counts by month (YYYY-MM)
     var monthYear = Utilities.formatDate(campaignDateObj, Session.getScriptTimeZone(), "yyyy-MM");
     dateCounts[monthYear] = (dateCounts[monthYear] || 0) + 1;
 
-    for (var key in columns) {
+    Object.keys(columns).forEach(key => {
       var cellValue = data[i][columns[key]];
-      if (cellValue && cellValue.includes(":")) {
-        var parts = cellValue.split(":");
-        var label = parts[0].trim();
-        var values = parts[1].split(",").map(val => val.trim()).filter(val => val !== "");
 
-        values.forEach(value => {
-          if (key === "External Reference 10" && label === "YearType") {
-            if (!isNaN(value)) {
-              label = "Year";
-            } else {
-              label = "Type";
-            }
-          }
-          if (value !== "") {
-            var keyName = label + " - " + value;
-            results[keyName] = (results[keyName] || 0) + 1;
-          }
+      if (key === "Topics" && cellValue) {
+        var topics = cellValue.split(",").map(topic => topic.trim()).filter(topic => topic !== "");
+        topics.forEach(topic => {
+          topicCounts[topic] = (topicCounts[topic] || 0) + 1;
         });
+      } else if (cellValue && cellValue.trim() !== "") {
+        if (key === "Country") countryCounts[cellValue.trim()] = (countryCounts[cellValue.trim()] || 0) + 1;
+        if (key === "Case Number") caseCounts[cellValue.trim()] = (caseCounts[cellValue.trim()] || 0) + 1;
+        if (key === "Year") yearCounts[cellValue.trim()] = (yearCounts[cellValue.trim()] || 0) + 1;
+        if (key === "Type") typeCounts[cellValue.trim()] = (typeCounts[cellValue.trim()] || 0) + 1;
       }
-    }
+    });
   }
 
-  // Write Campaign ID Summary (Filtered by Date) to "reporting-by-name"
-  reportByNameSheet.appendRow(["Campaign ID", "Count"]);
-  Object.entries(campaignCounts).sort().forEach(([campaign, count]) => {
-    reportByNameSheet.appendRow([campaign, count]);
-  });
+  writeSortedData(reportByNameSheet, ["Campaign ID", "Count"], campaignCounts);
+  writeSortedData(reportByCaseSheet, ["Case Number", "Count"], caseCounts);
+  writeSortedData(reportByCountrySheet, ["Country", "Count"], countryCounts);
+  writeSortedData(reportByTopicSheet, ["Topic", "Count"], topicCounts);
+  writeSortedData(reportByYearSheet, ["Year", "Count"], yearCounts);
+  writeSortedData(reportByTypeSheet, ["Type", "Count"], typeCounts);
+  writeSortedDataWithLeftAlign(reportByDateSheet, ["Month", "Count"], dateCounts);
+  writeSupporterData(reportBySupporterSheet, supporterCounts);
 
-  // Write External Reference Data to "reporting-by-er"
-  reportByERSheet.appendRow(["Label", "Value", "Count"]);
-  Object.entries(results).sort().forEach(([key, count]) => {
-    var splitKey = key.split(" - ");
-    if (splitKey.length === 2) {
-      reportByERSheet.appendRow([splitKey[0], "'" + splitKey[1], count]); // Force text format
-    }
-  });
-
-  // ✅ Write Date-based Aggregated Report to "reporting-by-date" (Force Text Formatting)
-  reportByDateSheet.appendRow(["Month", "Count"]);
-  Object.entries(dateCounts)
-    .sort(([a], [b]) => a.localeCompare(b)) // Sort by YYYY-MM
-    .forEach(([month, count]) => {
-      reportByDateSheet.appendRow(["'" + month, "'" + count]); // Force text format to keep left alignment
-    });
-
-  // ✅ Write Supporter ID Summary (Filtered by Date) to "reporting-by-supporter-id"
-  reportBySupporterSheet.appendRow(["Supporter ID", "Count"]);
-  Object.entries(supporterCounts)
-    .sort(([a], [b]) => a.localeCompare(b)) // Sort by ID
-    .forEach(([supporterID, count]) => {
-      reportBySupporterSheet.appendRow(["'" + supporterID, "'" + count]); // Force text format to keep left alignment
-    });
-
-  // ✅ Final success message only
   ui.alert("✅ Your UAN Reports have been updated!");
+}
+
+function getOrCreateSheet(ss, sheetName) {
+  var sheet = ss.getSheetByName(sheetName);
+  if (!sheet) {
+    sheet = ss.insertSheet(sheetName);
+  } else {
+    sheet.clear();
+  }
+  return sheet;
+}
+
+function writeSortedData(sheet, headers, data) {
+  var sortedData = Object.entries(data).sort(([a], [b]) => a.localeCompare(b));
+
+  sheet.appendRow(headers);
+  sheet.getRange(1, 2).setHorizontalAlignment("right");
+
+  sortedData.forEach(([key, count], index) => {
+    sheet.appendRow([key, count]);
+    sheet.getRange(index + 2, 2).setHorizontalAlignment("right");
+  });
+
+  if (sheet.getLastRow() > 1) {
+    var range = sheet.getRange(2, 1, sheet.getLastRow() - 1, 2);
+    range.sort(1);
+  }
+}
+
+function writeSortedDataWithLeftAlign(sheet, headers, data) {
+  var sortedData = Object.entries(data).sort(([a], [b]) => a.localeCompare(b));
+
+  sheet.appendRow(headers);
+  sheet.getRange(1, 1).setHorizontalAlignment("left");
+  sheet.getRange(1, 2).setHorizontalAlignment("right");
+
+  sortedData.forEach(([key, count], index) => {
+    sheet.appendRow([key, count]);
+    sheet.getRange(index + 2, 1).setHorizontalAlignment("left");
+    sheet.getRange(index + 2, 2).setHorizontalAlignment("right");
+  });
+
+  if (sheet.getLastRow() > 1) {
+    var range = sheet.getRange(2, 1, sheet.getLastRow() - 1, 2);
+    range.sort(1);
+  }
+}
+
+function writeSupporterData(sheet, data) {
+  var sortedData = Object.entries(data).sort(([a], [b]) => {
+    var idA = a.split(" - ")[0];
+    var idB = b.split(" - ")[0];
+    return idA.localeCompare(idB);
+  });
+
+  sheet.appendRow(["Supporter ID", "Supporter Email", "Count"]);
+  sheet.getRange(1, 3).setHorizontalAlignment("right");
+
+  var rows = sortedData.map(([key, count]) => {
+    var splitKey = key.split(" - ");
+    var supporterID = splitKey[0].trim();
+    var supporterEmail = splitKey.length > 1 ? splitKey[1].trim() : "";
+    return [supporterID, supporterEmail, count];
+  });
+
+  if (rows.length > 0) {
+    sheet.getRange(2, 1, rows.length, 3).setValues(rows);
+
+    // Ensure "Count" column is right-aligned
+    sheet.getRange(2, 3, rows.length, 1).setHorizontalAlignment("right");
+
+    // Ensure sorting is correct without breaking row alignment
+    sheet.getRange(2, 1, rows.length, 3).sort(1);
+  }
 }
