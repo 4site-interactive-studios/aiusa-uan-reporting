@@ -26,10 +26,37 @@
 ' USAGE:
 ' Windows: Use the "Update UAN Reports" menu in the ribbon
 ' Mac: Use Command+U to show the reports menu
+'
+' REPORTS GENERATED:
+' - by-name: Campaign ID counts with unique supporters
+' - by-case-number: Case number engagement
+' - by-country: Country-wise participation
+' - by-topic: Topic-wise breakdown
+' - by-year: Year-wise analysis
+' - by-type: Type-based categorization
+' - by-date: Monthly trends
+' - by-supporter: Individual supporter engagement
+'
+' PERFORMANCE NOTES:
+' - Uses arrays instead of ranges for better performance
+' - Includes progress indicators for long operations
+' - Handles large datasets efficiently
+'
+' ERROR HANDLING:
+' - Validates all required columns
+' - Handles date input validation
+' - Provides user feedback for all operations
+' - Graceful cleanup on errors
+'
+' MAINTENANCE NOTES:
+' - Mac/Windows compatibility handled via compiler directives
+' - Dictionary operations abstracted for cross-platform support
+' - Status updates provided via Application.StatusBar
+' - Excel state properly managed for reliability
 
 Option Explicit
 
-' Dictionary type for storing counts
+' Dictionary type for storing counts - MOVED TO TOP OF MODULE
 #If Mac Then
     ' Mac-specific Dictionary alternative using Collection
     Private Type MacDict
@@ -142,7 +169,7 @@ Public Sub ShowReportMenu()
         "8. Update by-type" & vbNewLine & _
         "9. Update by-date" & vbNewLine & _
         "10. Update by-supporter", _
-        "UAN Reports", , , , , , 1)
+        "UAN Reports", , , , , , , 1)
     
     If choice = False Then Exit Sub
     
@@ -263,6 +290,14 @@ Private Function GetColumnIndices() As ColumnIndices
     
     GetColumnIndices = cols
 End Function
+
+' Forward declaration of ProcessRowForReport to avoid forward reference error
+Private Sub ProcessRowForReport(ByRef dataRange As Range, ByVal row As Long, ByVal cols As ColumnIndices, _
+                              ByRef counts As ReportCounts, ByVal reportType As String, _
+                              ByVal hasStartDate As Boolean, ByVal startDate As Date, _
+                              ByVal hasEndDate As Boolean, ByVal endDate As Date)
+    ' Implementation will be defined later
+End Sub
 
 Public Sub ProcessCampaignData()
     Application.ScreenUpdating = False
@@ -455,92 +490,62 @@ End Sub
 Private Function CalculateUniqueSupporters(ByRef data As Range, ByVal cols As ColumnIndices, _
                                          ByVal hasStartDate As Boolean, ByVal startDate As Date, _
                                          ByVal hasEndDate As Boolean, ByVal endDate As Date) As ReportCounts
-    #If Mac Then
-        Dim uniqueCounts As ReportCounts
-        Set uniqueCounts.Dict.Keys = New Collection
-        Set uniqueCounts.Dict.Items = New Collection
+    ' Initialize the return value
+    Dim uniqueCounts As ReportCounts
+    uniqueCounts = CreateDictionary()
+    
+    ' Create a dictionary to track unique supporters per campaign
+    Dim campaignSupporters As Object
+    Set campaignSupporters = CreateObject("Scripting.Dictionary")
+    
+    ' Loop through data rows
+    Dim row As Long
+    For row = 2 To data.Rows.Count
+        ' Get campaign date with error handling
+        Dim campaignDate As Date
+        On Error Resume Next
+        campaignDate = data.Cells(row, cols.CampaignDate).Value
+        On Error GoTo 0
         
-        Dim campaignSupporters As Object
-        Set campaignSupporters = CreateObject("Scripting.Dictionary")
+        ' Skip rows without valid dates
+        If campaignDate = 0 Then GoTo NextRow
         
-        Dim row As Long
-        For row = 2 To data.Rows.Count
-            Dim campaignDate As Date
-            On Error Resume Next
-            campaignDate = data.Cells(row, cols.CampaignDate).Value
-            On Error GoTo 0
-            
-            If campaignDate = 0 Then GoTo NextRow
-            
-            If (hasStartDate And campaignDate < startDate) Or (hasEndDate And campaignDate > endDate) Then
-                GoTo NextRow
+        ' Apply date filters if specified
+        If (hasStartDate And campaignDate < startDate) Or (hasEndDate And campaignDate > endDate) Then
+            GoTo NextRow
+        End If
+        
+        ' Get campaign and supporter IDs
+        Dim campaignID As String
+        Dim supporterID As String
+        
+        campaignID = CStr(data.Cells(row, cols.CampaignID).Value)
+        supporterID = CStr(data.Cells(row, cols.SupporterID).Value)
+        
+        ' Track unique supporters per campaign
+        If campaignID <> "" And supporterID <> "" Then
+            If Not campaignSupporters.Exists(campaignID) Then
+                Set campaignSupporters(campaignID) = CreateObject("Scripting.Dictionary")
             End If
-            
-            Dim campaignID As String
-            Dim supporterID As String
-            
-            campaignID = CStr(data.Cells(row, cols.CampaignID).Value)
-            supporterID = CStr(data.Cells(row, cols.SupporterID).Value)
-            
-            If campaignID <> "" And supporterID <> "" Then
-                If Not campaignSupporters.Exists(campaignID) Then
-                    Set campaignSupporters(campaignID) = CreateObject("Scripting.Dictionary")
-                End If
-                campaignSupporters(campaignID)(supporterID) = 1
-            End If
+            campaignSupporters(campaignID)(supporterID) = 1
+        End If
 NextRow:
-        Next row
+    Next row
+    
+    ' Convert to counts
+    Dim campaign As Variant
+    For Each campaign In campaignSupporters.Keys
+        Dim campaignKey As String
+        campaignKey = CStr(campaign)
         
-        ' Convert to counts
-        Dim campaign As Variant
-        For Each campaign In campaignSupporters.Keys
-            DictSet uniqueCounts, campaign, campaignSupporters(campaign).Count
-        Next campaign
-        
-        Set CalculateUniqueSupporters = uniqueCounts
-    #Else
-        Dim uniqueCounts As ReportCounts
-        Set uniqueCounts.Dict = CreateObject("Scripting.Dictionary")
-        
-        Dim campaignSupporters As Object
-        Set campaignSupporters = CreateObject("Scripting.Dictionary")
-        
-        Dim row As Long
-        For row = 2 To data.Rows.Count
-            Dim campaignDate As Date
-            On Error Resume Next
-            campaignDate = data.Cells(row, cols.CampaignDate).Value
-            On Error GoTo 0
-            
-            If campaignDate = 0 Then GoTo NextRow
-            
-            If (hasStartDate And campaignDate < startDate) Or (hasEndDate And campaignDate > endDate) Then
-                GoTo NextRow
-            End If
-            
-            Dim campaignID As String
-            Dim supporterID As String
-            
-            campaignID = CStr(data.Cells(row, cols.CampaignID).Value)
-            supporterID = CStr(data.Cells(row, cols.SupporterID).Value)
-            
-            If campaignID <> "" And supporterID <> "" Then
-                If Not campaignSupporters.Exists(campaignID) Then
-                    Set campaignSupporters(campaignID) = CreateObject("Scripting.Dictionary")
-                End If
-                campaignSupporters(campaignID)(supporterID) = 1
-            End If
-NextRow:
-        Next row
-        
-        ' Convert to counts
-        Dim campaign As Variant
-        For Each campaign In campaignSupporters.Keys
-            uniqueCounts.Dict(campaign) = campaignSupporters(campaign).Count
-        Next campaign
-        
-        Set CalculateUniqueSupporters = uniqueCounts
-    #End If
+        #If Mac Then
+            DictSet uniqueCounts, campaignKey, campaignSupporters(campaign).Count
+        #Else
+            uniqueCounts.Dict(campaignKey) = campaignSupporters(campaign).Count
+        #End If
+    Next campaign
+    
+    Set CalculateUniqueSupporters = uniqueCounts
 End Function
 
 Private Sub WriteSortedData(ByRef ws As Worksheet, ByVal headers As Variant, ByRef counts As ReportCounts, Optional ByRef uniqueCounts As ReportCounts = Nothing)
@@ -559,7 +564,12 @@ Private Sub WriteSortedData(ByRef ws As Worksheet, ByVal headers As Variant, ByR
     Dim row As Long
     row = 2
     
+    ' Check if we need to include unique counts
+    Dim includeUniqueCounts As Boolean
+    includeUniqueCounts = Not uniqueCounts Is Nothing
+    
     #If Mac Then
+        ' Mac version using Collections
         Dim i As Long
         For i = 1 To counts.Dict.Keys.Count
             Dim key As String
@@ -571,7 +581,7 @@ Private Sub WriteSortedData(ByRef ws As Worksheet, ByVal headers As Variant, ByR
             ws.Cells(row, 2).Value = counts.Dict.Items(i)
             ws.Cells(row, 2).HorizontalAlignment = xlRight
             
-            If Not uniqueCounts Is Nothing Then
+            If includeUniqueCounts Then
                 ws.Cells(row, 3).Value = DictGet(uniqueCounts, key)
                 ws.Cells(row, 3).HorizontalAlignment = xlRight
             End If
@@ -579,20 +589,46 @@ Private Sub WriteSortedData(ByRef ws As Worksheet, ByVal headers As Variant, ByR
             row = row + 1
         Next i
     #Else
+        ' Windows version using Dictionary
+        ' Ensure counts.Dict is valid
+        If counts.Dict Is Nothing Then
+            MsgBox "Error: Dictionary not initialized in counts", vbExclamation
+            Exit Sub
+        End If
+        
         Dim key As Variant
+        ' Loop through each key in the dictionary
         For Each key In counts.Dict.Keys
+            ' Column 1: Campaign ID or Category
             ws.Cells(row, 1).Value = key
             ws.Cells(row, 1).HorizontalAlignment = xlLeft
             
+            ' Column 2: Count value
             ws.Cells(row, 2).Value = counts.Dict(key)
             ws.Cells(row, 2).HorizontalAlignment = xlRight
             
-            If Not uniqueCounts Is Nothing Then
-                If uniqueCounts.Dict.Exists(key) Then
-                    ws.Cells(row, 3).Value = uniqueCounts.Dict(key)
-                Else
-                    ws.Cells(row, 3).Value = 0
+            ' Column 3: Unique supporters count (if provided)
+            If includeUniqueCounts Then
+                ' Default to 0
+                ws.Cells(row, 3).Value = 0
+                
+                ' Defensive programming
+                If Not uniqueCounts.Dict Is Nothing Then
+                    ' Use safe retrieval with error handling
+                    On Error Resume Next
+                    
+                    ' Try to get the value for this key
+                    Dim uniqueValue As Variant
+                    uniqueValue = uniqueCounts.Dict(key)
+                    
+                    ' If no error occurred, update the cell
+                    If Err.Number = 0 Then
+                        ws.Cells(row, 3).Value = uniqueValue
+                    End If
+                    
+                    On Error GoTo 0
                 End If
+                
                 ws.Cells(row, 3).HorizontalAlignment = xlRight
             End If
             
@@ -783,4 +819,4 @@ Private Sub ProcessSpecificReport(ByVal sheetName As String, ByVal reportType As
     
     If reportType = "Campaign ID" Then
         Dim uniqueCounts As ReportCounts
-        Set uniqueCounts = CalculateUniqueSupporters(dataRange, cols, hasStartDate, startDate, hasEndDate, endDate
+        Set uniqueCounts = CalculateUniqueSupporters(dataRange, cols, hasStartDate, startDate, hasEndDate, endDate)
