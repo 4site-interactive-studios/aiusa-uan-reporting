@@ -1,17 +1,15 @@
-' UAN (Urgent Action Network) Reports Generator v1.0.0
-' Last Updated: 2024-03-19
+' UAN (Urgent Action Network) Reports Generator
 '
 ' DESCRIPTION:
 ' This script processes campaign data from an Excel sheet to generate various reports
 ' tracking supporter engagement across different dimensions like country, case number,
-' topics etc. The data is expected to be in a sheet named "processed-export"
-'
-' REQUIREMENTS:
-' - Windows: Microsoft Scripting Runtime reference required for Dictionary object
-' - Mac: Uses Collection object instead of Dictionary
-' - Excel 2010 or later recommended
-'
+' topics etc. All dat, expect Campaign Data 32, is expected to be in a sheet named "processed-export".
+' The "export" and "processed-export" sheets can have over 100 columns are expected to be in the same workbook.
+
 ' SHEET REQUIREMENTS:
+' - "export" sheet with headers:
+'   * Campaign Data 33 (URL with Page Title Argument)
+'
 ' - "processed-export" sheet with headers:
 '   * Campaign ID
 '   * Campaign Date
@@ -22,13 +20,11 @@
 '   * External Reference 8 (Topics)
 '   * External Reference 10 (Year)
 '   * External Reference 10 (Type)
-'
-' USAGE:
-' Windows: Use the "Update UAN Reports" menu in the ribbon
-' Mac: Use Command+U to show the reports menu
-'
+
+
 ' REPORTS GENERATED:
 ' - by-name: Campaign ID counts with unique supporters
+' - by-page-title: Page Title count and unique count
 ' - by-case-number: Case number engagement
 ' - by-country: Country-wise participation
 ' - by-topic: Topic-wise breakdown
@@ -36,23 +32,7 @@
 ' - by-type: Type-based categorization
 ' - by-date: Monthly trends
 ' - by-supporter: Individual supporter engagement
-'
-' PERFORMANCE NOTES:
-' - Uses arrays instead of ranges for better performance
-' - Includes progress indicators for long operations
-' - Handles large datasets efficiently
-'
-' ERROR HANDLING:
-' - Validates all required columns
-' - Handles date input validation
-' - Provides user feedback for all operations
-' - Graceful cleanup on errors
-'
-' MAINTENANCE NOTES:
-' - Mac/Windows compatibility handled via compiler directives
-' - Dictionary operations abstracted for cross-platform support
-' - Status updates provided via Application.StatusBar
-' - Excel state properly managed for reliability
+
 
 Option Explicit
 
