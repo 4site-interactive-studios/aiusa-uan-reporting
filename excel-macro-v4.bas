@@ -290,11 +290,20 @@ Private Sub ProcessData(ws As Worksheet, startDate As Date, endDate As Date, has
         ' Extract Country (removing "Country: " prefix)
         Dim rawCountry As String
         rawCountry = Trim(CStr(ws.Cells(row, cols.Country).Value))
+        
+        ' Try different variations of the Country prefix
         If InStr(1, rawCountry, "Country: ", vbTextCompare) = 1 Then
             country = Trim(Mid(rawCountry, 9)) ' Remove "Country: " prefix
+        ElseIf InStr(1, rawCountry, "Country :", vbTextCompare) = 1 Then
+            country = Trim(Mid(rawCountry, 10)) ' Remove "Country :" prefix
+        ElseIf InStr(1, rawCountry, "Country:", vbTextCompare) = 1 Then
+            country = Trim(Mid(rawCountry, 8)) ' Remove "Country:" prefix
         Else
             country = rawCountry
         End If
+        
+        ' If only a colon remains, treat as empty
+        If country = ":" Then country = ""
         
         ' Extract Case Number (removing "CaseNumber: " prefix)
         Dim rawCaseNumber As String
@@ -308,11 +317,20 @@ Private Sub ProcessData(ws As Worksheet, startDate As Date, endDate As Date, has
         ' Extract Topics (removing "Topic: " prefix)
         Dim rawTopic As String
         rawTopic = Trim(CStr(ws.Cells(row, cols.Topics).Value))
+        
+        ' Try different variations of the Topic prefix
         If InStr(1, rawTopic, "Topic: ", vbTextCompare) = 1 Then
             topic = Trim(Mid(rawTopic, 7)) ' Remove "Topic: " prefix
+        ElseIf InStr(1, rawTopic, "Topic :", vbTextCompare) = 1 Then
+            topic = Trim(Mid(rawTopic, 8)) ' Remove "Topic :" prefix
+        ElseIf InStr(1, rawTopic, "Topic:", vbTextCompare) = 1 Then
+            topic = Trim(Mid(rawTopic, 6)) ' Remove "Topic:" prefix
         Else
             topic = rawTopic
         End If
+        
+        ' If only a colon remains, treat as empty
+        If topic = ":" Then topic = ""
         
         ' Extract Year and Type from External Reference 10
         Dim rawYearType As String
@@ -460,9 +478,6 @@ NextRow:
     ' After processing all data, create the report sheet with dates
     Application.StatusBar = "Creating reports..."
     
-    ' First, write the individual report sheets
-    ' ... (code to write individual reports) ...
-    
     ' Determine date range for display, ensuring it's within the actual data range
     Dim displayStartDate As String, displayEndDate As String
     Dim effectiveStartDate As Date, effectiveEndDate As Date
@@ -496,6 +511,7 @@ NextRow:
     ' Create the main report sheet directly
     CreateMainReport displayStartDate, displayEndDate, _
                     campaignIDs, campaignCounts, campaignUniqueSupport, totalCampaigns, _
+                    pageTitles, pageTitleCounts, pageTitleUniqueSupport, totalPageTitles, _
                     caseNumbers, caseCounts, totalCases, _
                     countries, countryCounts, totalCountries, _
                     topics, topicCounts, totalTopics, _
@@ -503,9 +519,6 @@ NextRow:
                     types, typeCounts, totalTypes, _
                     dates, dateCounts, totalDates, _
                     supporters, supporterCounts, totalSupporters
-    
-    ' Create the page title report
-    CreatePageTitleReport pageTitles, pageTitleCounts, pageTitleUniqueSupport, totalPageTitles
     
     ' Create enhanced confirmation message
     Dim confirmMsg As String
@@ -684,6 +697,7 @@ End Function
 
 Private Sub CreateMainReport(startDate As String, endDate As String, _
                            campaignIDs() As String, campaignCounts() As Long, campaignUniques() As Long, totalCampaigns As Long, _
+                           pageTitles() As String, pageTitleCounts() As Long, pageTitleUniques() As Long, totalPageTitles As Long, _
                            caseNumbers() As String, caseCounts() As Long, totalCases As Long, _
                            countries() As String, countryCounts() As Long, totalCountries As Long, _
                            topics() As String, topicCounts() As Long, totalTopics As Long, _
@@ -757,45 +771,14 @@ Private Sub CreateMainReport(startDate As String, endDate As String, _
     reportSheet.Columns(col).ColumnWidth = 2
     col = col + 1
     
-    ' Get page title data from the by-page-title sheet
-    Dim pageTitleSheet As Worksheet
-    Dim pageTitles() As String
-    Dim pageTitleCounts() As Long
-    Dim pageTitleUniques() As Long
-    Dim totalPageTitles As Long
+    ' Page title data (with unique supporters)
+    AddDataToReport reportSheet, col, "Page Title", "Count", "Unique Supporters", _
+                   pageTitles, pageTitleCounts, pageTitleUniques, totalPageTitles
+    col = col + 3
     
-    On Error Resume Next
-    Set pageTitleSheet = ThisWorkbook.Sheets("by-page-title")
-    On Error GoTo 0
-    
-    If Not pageTitleSheet Is Nothing Then
-        ' Count the number of page titles
-        totalPageTitles = WorksheetFunction.CountA(pageTitleSheet.Range("A:A")) - 1 ' Subtract header
-        
-        If totalPageTitles > 0 Then
-            ReDim pageTitles(1 To totalPageTitles)
-            ReDim pageTitleCounts(1 To totalPageTitles)
-            ReDim pageTitleUniques(1 To totalPageTitles)
-            
-            ' Read data from the page title sheet
-            Dim i As Long
-            For i = 1 To totalPageTitles
-                ' Apply SmartTitleCase to ensure consistent formatting
-                pageTitles(i) = SmartTitleCase(pageTitleSheet.Cells(i + 1, 1).Value)
-                pageTitleCounts(i) = pageTitleSheet.Cells(i + 1, 2).Value
-                pageTitleUniques(i) = pageTitleSheet.Cells(i + 1, 3).Value
-            Next i
-            
-            ' Add page title data to report
-            AddDataToReport reportSheet, col, "Page Title", "Count", "Unique Supporters", _
-                           pageTitles, pageTitleCounts, pageTitleUniques, totalPageTitles
-            col = col + 3
-            
-            ' Add narrow separator column
-            reportSheet.Columns(col).ColumnWidth = 2
-            col = col + 1
-        End If
-    End If
+    ' Add narrow separator column
+    reportSheet.Columns(col).ColumnWidth = 2
+    col = col + 1
     
     ' Case number data (without unique supporters)
     AddDataToReport reportSheet, col, "Case Number", "Count", "", _
@@ -1056,6 +1039,7 @@ Private Function ExtractPageTitle(urlString As String) As String
         decodedTitle = Replace(decodedTitle, "‚äôs", "'s")
         decodedTitle = Replace(decodedTitle, "‚'", "'")
         decodedTitle = Replace(decodedTitle, "‚", "'")  ' Replace just the single character
+        decodedTitle = Replace(decodedTitle, "&#8217;", "'")  ' Replace HTML entity for right single quote
         
         ExtractPageTitle = SmartTitleCase(decodedTitle)
     End If
@@ -1126,53 +1110,66 @@ Private Function URLDecode(encodedString As String) As String
     URLDecode = result
 End Function
 
-' Create the page title report sheet
-Private Sub CreatePageTitleReport(pageTitles() As String, pageTitleCounts() As Long, pageTitleUniques() As Long, totalPageTitles As Long)
-    ' Sort the arrays first
-    SortArrays pageTitles, pageTitleCounts, pageTitleUniques, totalPageTitles
+' Clear all UAN report data
+Public Sub ZZZ_Clear_UAN_Reports_ZZZ()
+    ' Initialize Excel environment
+    Dim screenUpdating As Boolean
+    Dim statusBar As Boolean
+    Dim calculation As XlCalculation
+    Dim displayAlerts As Boolean
     
-    ' Get or create the report sheet
-    Dim reportSheet As Worksheet
-    Set reportSheet = GetOrCreateSheet("by-page-title")
+    ' Save current Excel settings
+    screenUpdating = Application.ScreenUpdating
+    statusBar = Application.DisplayStatusBar
+    calculation = Application.Calculation
+    displayAlerts = Application.DisplayAlerts
     
-    ' Clear the sheet
-    reportSheet.Cells.Clear
+    ' Configure Excel for processing
+    Application.ScreenUpdating = False
+    Application.DisplayStatusBar = True
+    Application.Calculation = xlCalculationManual
+    Application.DisplayAlerts = False
+    Application.StatusBar = "Clearing UAN Reports..."
     
-    ' Add headers
-    reportSheet.Range("A1").Value = "Page Title"
-    reportSheet.Range("B1").Value = "Count"
-    reportSheet.Range("C1").Value = "Unique Supporters"
+    On Error GoTo ErrorHandler
     
-    ' Format headers - only make them bold, no background color or borders
-    reportSheet.Range("A1:C1").Font.Bold = True
+    ' List of report sheets to clear
+    Dim reportSheets As Variant
+    reportSheets = Array("report")  ' Removed "by-page-title"
     
-    ' Right-align count columns
-    reportSheet.Range("B1").HorizontalAlignment = xlRight
-    reportSheet.Range("C1").HorizontalAlignment = xlRight
-    
-    ' Write data
-    Dim row As Long
-    row = 2
-    
+    ' Clear each report sheet
     Dim i As Long
-    For i = 1 To totalPageTitles
-        ' Copy page title
-        reportSheet.Cells(row, 1).Value = pageTitles(i)
+    Dim ws As Worksheet
+    Dim sheetsCleared As Long
+    
+    sheetsCleared = 0
+    
+    For i = LBound(reportSheets) To UBound(reportSheets)
+        On Error Resume Next
+        Set ws = ThisWorkbook.Sheets(reportSheets(i))
+        On Error GoTo 0
         
-        ' Copy count
-        reportSheet.Cells(row, 2).Value = pageTitleCounts(i)
-        
-        ' Copy unique supporters
-        reportSheet.Cells(row, 3).Value = pageTitleUniques(i)
-        
-        row = row + 1
+        If Not ws Is Nothing Then
+            ws.Cells.Clear
+            sheetsCleared = sheetsCleared + 1
+        End If
     Next i
     
-    ' Format data - right-align count columns but no borders
-    If row > 2 Then
-        reportSheet.Range("B2:C" & (row - 1)).HorizontalAlignment = xlRight
-    End If
+    ' Show confirmation message
+    MsgBox "UAN Reports cleared successfully." & vbNewLine & _
+           sheetsCleared & " report sheets were cleared.", _
+           vbInformation, "UAN Reports Cleared"
     
-    ' Auto-fit columns
-    reportSheet.Columns("A:C").AutoFit
+    GoTo Cleanup
+    
+ErrorHandler:
+    MsgBox "An error occurred while clearing reports: " & Err.Description, vbCritical
+    
+Cleanup:
+    ' Restore Excel settings
+    Application.StatusBar = False
+    Application.ScreenUpdating = screenUpdating
+    Application.DisplayStatusBar = statusBar
+    Application.Calculation = calculation
+    Application.DisplayAlerts = displayAlerts
 End Sub
