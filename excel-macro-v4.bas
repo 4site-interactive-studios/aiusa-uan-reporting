@@ -262,6 +262,12 @@ Private Sub ProcessData(ws As Worksheet, startDate As Date, endDate As Date, has
         End If
         On Error GoTo 0
         
+        ' Track min and max dates for ALL data, regardless of filter
+        If campaignDate <> 0 Then
+            If campaignDate < minDate Then minDate = campaignDate
+            If campaignDate > maxDate Then maxDate = campaignDate
+        End If
+        
         ' Skip rows without valid dates or if outside date range
         If campaignDate = 0 Then GoTo NextRow
         If hasStartDate And campaignDate < startDate Then GoTo NextRow
@@ -358,23 +364,34 @@ NextRow:
     ' First, write the individual report sheets
     ' ... (code to write individual reports) ...
     
-    ' Determine date range for display
+    ' Determine date range for display, ensuring it's within the actual data range
     Dim displayStartDate As String, displayEndDate As String
+    Dim effectiveStartDate As Date, effectiveEndDate As Date
     
+    ' Determine effective start date (user input or data min, whichever is later)
     If hasStartDate Then
-        displayStartDate = Format(startDate, "yyyy-mm-dd")
-    ElseIf minDate < DateSerial(9999, 12, 31) Then ' If we found valid dates
-        displayStartDate = Format(minDate, "yyyy-mm-dd")
+        If startDate > minDate Then
+            effectiveStartDate = startDate
+        Else
+            effectiveStartDate = minDate
+        End If
+        displayStartDate = Format(effectiveStartDate, "yyyy-mm-dd")
     Else
-        displayStartDate = "All data"
+        effectiveStartDate = minDate
+        displayStartDate = Format(minDate, "yyyy-mm-dd")
     End If
     
+    ' Determine effective end date (user input or data max, whichever is earlier)
     If hasEndDate Then
-        displayEndDate = Format(endDate, "yyyy-mm-dd")
-    ElseIf maxDate > DateSerial(1900, 1, 1) Then ' If we found valid dates
-        displayEndDate = Format(maxDate, "yyyy-mm-dd")
+        If endDate < maxDate Then
+            effectiveEndDate = endDate
+        Else
+            effectiveEndDate = maxDate
+        End If
+        displayEndDate = Format(effectiveEndDate, "yyyy-mm-dd")
     Else
-        displayEndDate = "All data"
+        effectiveEndDate = maxDate
+        displayEndDate = Format(maxDate, "yyyy-mm-dd")
     End If
     
     ' Create the main report sheet directly
@@ -390,15 +407,19 @@ NextRow:
     
     ' Create enhanced confirmation message
     Dim confirmMsg As String
-    confirmMsg = "Your UAN Reports have been updated!" & vbNewLine & vbNewLine & _
-                "Data Summary:" & vbNewLine & _
-                "Total rows in export: " & (lastRow - 1) & vbNewLine & _
-                "Date range: " & vbNewLine & _
-                "From: " & displayStartDate & vbNewLine & _
-                "To: " & displayEndDate & vbNewLine & _
-                "Rows processed: " & processedRows & " (" & Format(processedRows / (lastRow - 1) * 100, "0.0") & "%)" & vbNewLine & _
-                "Unique campaigns: " & totalCampaigns & vbNewLine & _
-                "Unique supporters: " & totalSupporters
+    confirmMsg = "Your UAN Report has been updated!" & vbNewLine & vbNewLine & _
+                "Summary:" & vbNewLine & _
+                "Entries in export: " & (lastRow - 1) & vbNewLine & _
+                "Entries processed: " & processedRows & " (" & Format(processedRows / (lastRow - 1) * 100, "0.0") & "%)" & vbNewLine & _
+                "Start Date: " & displayStartDate & vbNewLine & _
+                "End Date: " & displayEndDate & vbNewLine & vbNewLine & _
+                "Results (Unique / Total):" & vbNewLine & _
+                "Supporters: " & totalSupporters & " / " & Application.WorksheetFunction.Sum(supporterCounts) & vbNewLine & _
+                "Campaigns: " & totalCampaigns & " / " & Application.WorksheetFunction.Sum(campaignCounts) & vbNewLine & _
+                "Case Numbers: " & totalCases & " / " & Application.WorksheetFunction.Sum(caseCounts) & vbNewLine & _
+                "Countries: " & totalCountries & " / " & Application.WorksheetFunction.Sum(countryCounts) & vbNewLine & _
+                "Topics: " & totalTopics & " / " & Application.WorksheetFunction.Sum(topicCounts) & vbNewLine & _
+                "Types: " & totalTypes & " / " & Application.WorksheetFunction.Sum(typeCounts)
     
     MsgBox confirmMsg, vbInformation, "UAN Report Generation Complete"
     
@@ -588,13 +609,28 @@ Private Sub CreateMainReport(startDate As String, endDate As String, _
     reportSheet.Range("B1").Value = "Date"  ' Add Date heading
     reportSheet.Range("A2").Value = "Start Date"
     reportSheet.Range("A3").Value = "End Date"
-    reportSheet.Range("B2").Value = startDate
-    reportSheet.Range("B3").Value = endDate
+    
+    ' Set date values with consistent formatting
+    If IsDate(startDate) Then
+        reportSheet.Range("B2").Value = Format(CDate(startDate), "yyyy-mm-dd")
+    Else
+        reportSheet.Range("B2").Value = startDate
+    End If
+    
+    If IsDate(endDate) Then
+        reportSheet.Range("B3").Value = Format(CDate(endDate), "yyyy-mm-dd")
+    Else
+        reportSheet.Range("B3").Value = endDate
+    End If
     
     ' Format headers
     reportSheet.Range("A1:B1").Font.Bold = True
     reportSheet.Range("A1:B3").Borders.LineStyle = xlContinuous
     reportSheet.Range("A1:B1").Interior.ColorIndex = 15 ' Light gray
+    
+    ' Right-align the Date header and values
+    reportSheet.Range("B1").HorizontalAlignment = xlRight
+    reportSheet.Range("B2:B3").HorizontalAlignment = xlRight
     
     ' Add a narrow blank column for visual separation
     reportSheet.Columns("C:C").ColumnWidth = 2
@@ -702,6 +738,15 @@ Private Sub AddDataToReport(reportSheet As Worksheet, startCol As Long, headerTe
         reportSheet.Cells(1, startCol + 2).Font.Bold = True
     End If
     
+    ' Right-align count and unique supporter columns including headers
+    reportSheet.Cells(1, startCol + 1).HorizontalAlignment = xlRight
+    reportSheet.Range(reportSheet.Cells(2, startCol + 1), reportSheet.Cells(total + 1, startCol + 1)).HorizontalAlignment = xlRight
+    
+    If uniqueHeader <> "" Then
+        reportSheet.Cells(1, startCol + 2).HorizontalAlignment = xlRight
+        reportSheet.Range(reportSheet.Cells(2, startCol + 2), reportSheet.Cells(total + 1, startCol + 2)).HorizontalAlignment = xlRight
+    End If
+    
     ' Write data
     Dim row As Long
     row = 2
@@ -743,6 +788,10 @@ Private Sub AddSupporterDataToReport(reportSheet As Worksheet, startCol As Long,
     reportSheet.Cells(1, startCol).Font.Bold = True
     reportSheet.Cells(1, startCol + 1).Font.Bold = True
     reportSheet.Cells(1, startCol + 2).Font.Bold = True
+    
+    ' Right-align count column including header
+    reportSheet.Cells(1, startCol + 2).HorizontalAlignment = xlRight
+    reportSheet.Range(reportSheet.Cells(2, startCol + 2), reportSheet.Cells(total + 1, startCol + 2)).HorizontalAlignment = xlRight
     
     ' Write data
     Dim row As Long
