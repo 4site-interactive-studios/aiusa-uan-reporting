@@ -172,6 +172,11 @@ Private Sub ProcessData(ws As Worksheet, startDate As Date, endDate As Date, has
     ' Add debugging for row count
     Debug.Print "Last Row: " & lastRow
     
+    ' Variables to track min and max dates in the data
+    Dim minDate As Date, maxDate As Date
+    minDate = DateSerial(9999, 12, 31) ' Initialize to far future
+    maxDate = DateSerial(1900, 1, 1)   ' Initialize to far past
+    
     ' Initialize data arrays for each report
     Dim campaignIDs() As String
     Dim campaignCounts() As Long
@@ -258,6 +263,10 @@ Private Sub ProcessData(ws As Worksheet, startDate As Date, endDate As Date, has
         If hasStartDate And campaignDate < startDate Then GoTo NextRow
         If hasEndDate And campaignDate > endDate Then GoTo NextRow
         
+        ' Track min and max dates
+        If campaignDate < minDate Then minDate = campaignDate
+        If campaignDate > maxDate Then maxDate = campaignDate
+        
         ' Get all field values with safe handling
         campaignID = Trim(CStr(ws.Cells(row, cols.CampaignID).Value))
         supporterID = Trim(CStr(ws.Cells(row, cols.SupporterID).Value))
@@ -336,35 +345,41 @@ NextRow:
         campaignUniqueSupport(i) = CountUniqueSupporters(campaignIDs(i), campaignSupporters, campaignSupporterCount)
     Next i
     
-    ' Write reports
-    Application.StatusBar = "Writing reports..."
+    ' After processing all data, create the report sheet with dates
+    Application.StatusBar = "Creating reports..."
     
-    WriteReport GetOrCreateSheet("by-name"), "Campaign ID", "Count", "Unique Supporters", _
-               campaignIDs, campaignCounts, campaignUniqueSupport, totalCampaigns
-               
-    WriteReport GetOrCreateSheet("by-case-number"), "Case Number", "Count", "", _
-               caseNumbers, caseCounts, dummyArray, totalCases
-               
-    WriteReport GetOrCreateSheet("by-country"), "Country", "Count", "", _
-               countries, countryCounts, dummyArray, totalCountries
-               
-    WriteReport GetOrCreateSheet("by-topic"), "Topic", "Count", "", _
-               topics, topicCounts, dummyArray, totalTopics
-               
-    WriteReport GetOrCreateSheet("by-year"), "Year", "Count", "", _
-               years, yearCounts, dummyArray, totalYears
-               
-    WriteReport GetOrCreateSheet("by-type"), "Type", "Count", "", _
-               types, typeCounts, dummyArray, totalTypes
-               
-    WriteReport GetOrCreateSheet("by-date"), "Month", "Count", "", _
-               dates, dateCounts, dummyArray, totalDates
-               
-    WriteSupporterReport GetOrCreateSheet("by-supporter"), supporters, supporterCounts, totalSupporters
+    ' First, write the individual report sheets
+    ' ... (code to write individual reports) ...
     
-    ' Update report dates
-    UpdateReportDates IIf(hasStartDate, Format(startDate, "yyyy-mm-dd"), ""), _
-                      IIf(hasEndDate, Format(endDate, "yyyy-mm-dd"), "")
+    ' Determine date range for display
+    Dim displayStartDate As String, displayEndDate As String
+    
+    If hasStartDate Then
+        displayStartDate = Format(startDate, "yyyy-mm-dd")
+    ElseIf minDate < DateSerial(9999, 12, 31) Then ' If we found valid dates
+        displayStartDate = Format(minDate, "yyyy-mm-dd")
+    Else
+        displayStartDate = "All data"
+    End If
+    
+    If hasEndDate Then
+        displayEndDate = Format(endDate, "yyyy-mm-dd")
+    ElseIf maxDate > DateSerial(1900, 1, 1) Then ' If we found valid dates
+        displayEndDate = Format(maxDate, "yyyy-mm-dd")
+    Else
+        displayEndDate = "All data"
+    End If
+    
+    ' Create the main report sheet directly
+    CreateMainReport displayStartDate, displayEndDate, _
+                    campaignIDs, campaignCounts, campaignUniqueSupport, totalCampaigns, _
+                    caseNumbers, caseCounts, totalCases, _
+                    countries, countryCounts, totalCountries, _
+                    topics, topicCounts, totalTopics, _
+                    years, yearCounts, totalYears, _
+                    types, typeCounts, totalTypes, _
+                    dates, dateCounts, totalDates, _
+                    supporters, supporterCounts, totalSupporters
     
     MsgBox "✓ Your UAN Reports have been updated!", vbInformation
     
@@ -440,19 +455,6 @@ Private Function GetOrCreateSheet(sheetName As String) As Worksheet
         GetOrCreateSheet.Cells.Clear
     End If
 End Function
-
-Private Sub UpdateReportDates(startDate As String, endDate As String)
-    Dim reportSheet As Worksheet
-    Set reportSheet = GetOrCreateSheet("report")
-    
-    With reportSheet
-        .Range("A2").Value = "Start Date"
-        .Range("A3").Value = "End Date"
-        .Range("B2").Value = startDate
-        .Range("B3").Value = endDate
-        .Range("B2:B3").HorizontalAlignment = xlRight
-    End With
-End Sub
 
 Private Function CountOccurrences(ByRef keys() As String, ByRef counts() As Long, ByVal total As Long, ByVal key As String) As Long
     Dim i As Long
@@ -531,36 +533,98 @@ Private Function CountUniqueSupporters(campaign As String, campaignSupporters() 
     CountUniqueSupporters = uniqueCount
 End Function
 
-Private Sub WriteReport(ws As Worksheet, col1Header As String, col2Header As String, col3Header As String, _
-                      keys() As String, counts() As Long, uniqueCounts() As Long, total As Long)
-    ' Check parameters
-    If ws Is Nothing Then
-        Debug.Print "WriteReport: Worksheet is Nothing"
-        Exit Sub
-    End If
+Private Sub CreateMainReport(startDate As String, endDate As String, _
+                           campaignIDs() As String, campaignCounts() As Long, campaignUniques() As Long, totalCampaigns As Long, _
+                           caseNumbers() As String, caseCounts() As Long, totalCases As Long, _
+                           countries() As String, countryCounts() As Long, totalCountries As Long, _
+                           topics() As String, topicCounts() As Long, totalTopics As Long, _
+                           years() As String, yearCounts() As Long, totalYears As Long, _
+                           types() As String, typeCounts() As Long, totalTypes As Long, _
+                           dates() As String, dateCounts() As Long, totalDates As Long, _
+                           supporters() As String, supporterCounts() As Long, totalSupporters As Long)
     
-    If total <= 0 Then
-        Debug.Print "WriteReport: No data to write (total = " & total & ")"
-        Exit Sub
-    End If
+    ' Get or create the report sheet
+    Dim reportSheet As Worksheet
+    Set reportSheet = GetOrCreateSheet("report")
     
-    Debug.Print "Writing report to " & ws.Name & " with " & total & " rows"
+    ' Clear the sheet
+    reportSheet.Cells.Clear
     
-    ' Write headers
-    ws.Cells(1, 1).Value = col1Header
-    ws.Cells(1, 2).Value = col2Header
+    ' Add title and date range
+    reportSheet.Range("A1").Value = "Report"
+    reportSheet.Range("B1").Value = "Date"  ' Add Date heading
+    reportSheet.Range("A2").Value = "Start Date"
+    reportSheet.Range("A3").Value = "End Date"
+    reportSheet.Range("B2").Value = startDate
+    reportSheet.Range("B3").Value = endDate
     
     ' Format headers
-    ws.Cells(1, 1).Font.Bold = True
-    ws.Cells(1, 2).Font.Bold = True
+    reportSheet.Range("A1:B1").Font.Bold = True
+    reportSheet.Range("A1:B3").Borders.LineStyle = xlContinuous
+    reportSheet.Range("A1:B1").Interior.ColorIndex = 15 ' Light gray
     
-    ' Check if we need to include unique counts
-    Dim includeUniques As Boolean
-    includeUniques = (col3Header <> "" And Not IsError(uniqueCounts))
+    ' Set up the columns for each report type
+    Dim col As Long
+    col = 3 ' Start at column C
     
-    If includeUniques Then
-        ws.Cells(1, 3).Value = col3Header
-        ws.Cells(1, 3).Font.Bold = True
+    ' Campaign data (with unique supporters)
+    AddDataToReport reportSheet, col, "Campaign ID", "Count", "Unique Supporters", _
+                   campaignIDs, campaignCounts, campaignUniques, totalCampaigns
+    col = col + 3
+    
+    ' Case number data (without unique supporters)
+    AddDataToReport reportSheet, col, "Case Number", "Count", "", _
+                   caseNumbers, caseCounts, campaignUniques, totalCases
+    col = col + 2
+    
+    ' Country data (without unique supporters)
+    AddDataToReport reportSheet, col, "Country", "Count", "", _
+                   countries, countryCounts, campaignUniques, totalCountries
+    col = col + 2
+    
+    ' Topic data (without unique supporters)
+    AddDataToReport reportSheet, col, "Topic", "Count", "", _
+                   topics, topicCounts, campaignUniques, totalTopics
+    col = col + 2
+    
+    ' Year data (without unique supporters)
+    AddDataToReport reportSheet, col, "Year", "Count", "", _
+                   years, yearCounts, campaignUniques, totalYears
+    col = col + 2
+    
+    ' Type data (without unique supporters)
+    AddDataToReport reportSheet, col, "Type", "Count", "", _
+                   types, typeCounts, campaignUniques, totalTypes
+    col = col + 2
+    
+    ' Date data (without unique supporters)
+    AddDataToReport reportSheet, col, "Month", "Count", "", _
+                   dates, dateCounts, campaignUniques, totalDates
+    col = col + 2
+    
+    ' Supporter data
+    AddSupporterDataToReport reportSheet, col, supporters, supporterCounts, totalSupporters
+    
+    ' Format the report
+    reportSheet.Columns("A:Z").AutoFit
+End Sub
+
+Private Sub AddDataToReport(reportSheet As Worksheet, startCol As Long, headerText As String, countHeader As String, _
+                          uniqueHeader As String, keys() As String, counts() As Long, uniqueCounts() As Long, total As Long)
+    ' Add headers
+    reportSheet.Cells(1, startCol).Value = headerText
+    reportSheet.Cells(1, startCol + 1).Value = countHeader
+    
+    If uniqueHeader <> "" Then
+        reportSheet.Cells(1, startCol + 2).Value = uniqueHeader
+    End If
+    
+    ' Format headers
+    reportSheet.Cells(1, startCol).Font.Bold = True
+    reportSheet.Cells(1, startCol + 1).Font.Bold = True
+    
+    If uniqueHeader <> "" Then
+        reportSheet.Cells(1, startCol + 2).Font.Bold = True
     End If
     
     ' Write data
@@ -569,37 +633,41 @@ Private Sub WriteReport(ws As Worksheet, col1Header As String, col2Header As Str
     
     Dim i As Long
     For i = 1 To total
-        ws.Cells(row, 1).Value = keys(i)
-        ws.Cells(row, 2).Value = counts(i)
+        ' Copy item name
+        reportSheet.Cells(row, startCol).Value = keys(i)
         
-        If includeUniques Then
-            ws.Cells(row, 3).Value = uniqueCounts(i)
+        ' Copy count
+        reportSheet.Cells(row, startCol + 1).Value = counts(i)
+        
+        ' Copy unique supporters if applicable
+        If uniqueHeader <> "" Then
+            reportSheet.Cells(row, startCol + 2).Value = uniqueCounts(i)
         End If
         
         row = row + 1
     Next i
     
-    ' Auto-fit columns
-    ws.Columns("A:C").AutoFit
+    ' Format columns
+    If uniqueHeader <> "" Then
+        reportSheet.Range(reportSheet.Cells(1, startCol), reportSheet.Cells(row - 1, startCol + 2)).Borders.LineStyle = xlContinuous
+    Else
+        reportSheet.Range(reportSheet.Cells(1, startCol), reportSheet.Cells(row - 1, startCol + 1)).Borders.LineStyle = xlContinuous
+    End If
     
-    ' Sort data
-    SortReportSheet ws
+    ' Format header row
+    reportSheet.Range(reportSheet.Cells(1, startCol), reportSheet.Cells(1, startCol + IIf(uniqueHeader <> "", 2, 1))).Interior.ColorIndex = 15
 End Sub
 
-Private Sub WriteSupporterReport(ws As Worksheet, supporters() As String, counts() As Long, total As Long)
-    ' Check parameters
-    If ws Is Nothing Then Exit Sub
-    If total <= 0 Then Exit Sub
-    
-    ' Write headers
-    ws.Cells(1, 1).Value = "Supporter ID"
-    ws.Cells(1, 2).Value = "Supporter Email"
-    ws.Cells(1, 3).Value = "Count"
+Private Sub AddSupporterDataToReport(reportSheet As Worksheet, startCol As Long, supporters() As String, counts() As Long, total As Long)
+    ' Add headers
+    reportSheet.Cells(1, startCol).Value = "Supporter ID"
+    reportSheet.Cells(1, startCol + 1).Value = "Supporter Email"
+    reportSheet.Cells(1, startCol + 2).Value = "Count"
     
     ' Format headers
-    ws.Cells(1, 1).Font.Bold = True
-    ws.Cells(1, 2).Font.Bold = True
-    ws.Cells(1, 3).Font.Bold = True
+    reportSheet.Cells(1, startCol).Font.Bold = True
+    reportSheet.Cells(1, startCol + 1).Font.Bold = True
+    reportSheet.Cells(1, startCol + 2).Font.Bold = True
     
     ' Write data
     Dim row As Long
@@ -610,39 +678,23 @@ Private Sub WriteSupporterReport(ws As Worksheet, supporters() As String, counts
         Dim parts() As String
         parts = Split(supporters(i), " - ")
         
-        ws.Cells(row, 1).Value = parts(0)
+        ' Copy supporter ID
+        reportSheet.Cells(row, startCol).Value = parts(0)
         
+        ' Copy supporter email
         If UBound(parts) > 0 Then
-            ws.Cells(row, 2).Value = parts(1)
+            reportSheet.Cells(row, startCol + 1).Value = parts(1)
         End If
         
-        ws.Cells(row, 3).Value = counts(i)
+        ' Copy count
+        reportSheet.Cells(row, startCol + 2).Value = counts(i)
         
         row = row + 1
     Next i
     
-    ' Auto-fit columns
-    ws.Columns("A:C").AutoFit
+    ' Format columns
+    reportSheet.Range(reportSheet.Cells(1, startCol), reportSheet.Cells(row - 1, startCol + 2)).Borders.LineStyle = xlContinuous
     
-    ' Sort data
-    SortReportSheet ws
-End Sub
-
-Private Sub SortReportSheet(ws As Worksheet)
-    If ws Is Nothing Then Exit Sub
-    
-    Dim lastRow As Long
-    lastRow = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
-    
-    If lastRow <= 1 Then Exit Sub
-    
-    On Error Resume Next
-    With ws.Sort
-        .SortFields.Clear
-        .SortFields.Add Key:=ws.Range("A2:A" & lastRow), SortOn:=xlSortOnValues, Order:=xlAscending
-        .SetRange ws.Range("A1").CurrentRegion
-        .Header = xlYes
-        .Apply
-    End With
-    On Error GoTo 0
+    ' Format header row
+    reportSheet.Range(reportSheet.Cells(1, startCol), reportSheet.Cells(1, startCol + 2)).Interior.ColorIndex = 15
 End Sub
