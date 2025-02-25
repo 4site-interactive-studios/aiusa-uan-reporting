@@ -70,7 +70,7 @@ Private Type ColumnIndices
 End Type
 
 ' Main entry point macro that will appear in Excel's macro list
-Public Sub GenerateUANReports()
+Public Sub Generate_UAN_Report()
     ' Initialize Excel environment
     Dim screenUpdating As Boolean
     Dim statusBar As Boolean
@@ -177,6 +177,10 @@ Private Sub ProcessData(ws As Worksheet, startDate As Date, endDate As Date, has
     minDate = DateSerial(9999, 12, 31) ' Initialize to far future
     maxDate = DateSerial(1900, 1, 1)   ' Initialize to far past
     
+    ' Add counter for processed rows
+    Dim processedRows As Long
+    processedRows = 0
+    
     ' Initialize data arrays for each report
     Dim campaignIDs() As String
     Dim campaignCounts() As Long
@@ -262,6 +266,9 @@ Private Sub ProcessData(ws As Worksheet, startDate As Date, endDate As Date, has
         If campaignDate = 0 Then GoTo NextRow
         If hasStartDate And campaignDate < startDate Then GoTo NextRow
         If hasEndDate And campaignDate > endDate Then GoTo NextRow
+        
+        ' Increment processed rows counter
+        processedRows = processedRows + 1
         
         ' Track min and max dates
         If campaignDate < minDate Then minDate = campaignDate
@@ -381,7 +388,19 @@ NextRow:
                     dates, dateCounts, totalDates, _
                     supporters, supporterCounts, totalSupporters
     
-    MsgBox "✓ Your UAN Reports have been updated!", vbInformation
+    ' Create enhanced confirmation message
+    Dim confirmMsg As String
+    confirmMsg = "Your UAN Reports have been updated!" & vbNewLine & vbNewLine & _
+                "Data Summary:" & vbNewLine & _
+                "Total rows in export: " & (lastRow - 1) & vbNewLine & _
+                "Date range: " & vbNewLine & _
+                "From: " & displayStartDate & vbNewLine & _
+                "To: " & displayEndDate & vbNewLine & _
+                "Rows processed: " & processedRows & " (" & Format(processedRows / (lastRow - 1) * 100, "0.0") & "%)" & vbNewLine & _
+                "Unique campaigns: " & totalCampaigns & vbNewLine & _
+                "Unique supporters: " & totalSupporters
+    
+    MsgBox confirmMsg, vbInformation, "UAN Report Generation Complete"
     
     ' After processing, add debugging for totals
     Debug.Print "Total Campaigns: " & totalCampaigns
@@ -563,50 +582,92 @@ Private Sub CreateMainReport(startDate As String, endDate As String, _
     reportSheet.Range("A1:B3").Borders.LineStyle = xlContinuous
     reportSheet.Range("A1:B1").Interior.ColorIndex = 15 ' Light gray
     
+    ' Add a narrow blank column for visual separation
+    reportSheet.Columns("C:C").ColumnWidth = 2
+    
     ' Set up the columns for each report type
     Dim col As Long
-    col = 3 ' Start at column C
+    col = 4 ' Start at column D (after the separator column)
     
     ' Campaign data (with unique supporters)
     AddDataToReport reportSheet, col, "Campaign ID", "Count", "Unique Supporters", _
                    campaignIDs, campaignCounts, campaignUniques, totalCampaigns
     col = col + 3
     
+    ' Add narrow separator column
+    reportSheet.Columns(col).ColumnWidth = 2
+    col = col + 1
+    
     ' Case number data (without unique supporters)
     AddDataToReport reportSheet, col, "Case Number", "Count", "", _
                    caseNumbers, caseCounts, campaignUniques, totalCases
     col = col + 2
+    
+    ' Add narrow separator column
+    reportSheet.Columns(col).ColumnWidth = 2
+    col = col + 1
     
     ' Country data (without unique supporters)
     AddDataToReport reportSheet, col, "Country", "Count", "", _
                    countries, countryCounts, campaignUniques, totalCountries
     col = col + 2
     
+    ' Add narrow separator column
+    reportSheet.Columns(col).ColumnWidth = 2
+    col = col + 1
+    
     ' Topic data (without unique supporters)
     AddDataToReport reportSheet, col, "Topic", "Count", "", _
                    topics, topicCounts, campaignUniques, totalTopics
     col = col + 2
+    
+    ' Add narrow separator column
+    reportSheet.Columns(col).ColumnWidth = 2
+    col = col + 1
     
     ' Year data (without unique supporters)
     AddDataToReport reportSheet, col, "Year", "Count", "", _
                    years, yearCounts, campaignUniques, totalYears
     col = col + 2
     
+    ' Add narrow separator column
+    reportSheet.Columns(col).ColumnWidth = 2
+    col = col + 1
+    
     ' Type data (without unique supporters)
     AddDataToReport reportSheet, col, "Type", "Count", "", _
                    types, typeCounts, campaignUniques, totalTypes
     col = col + 2
+    
+    ' Add narrow separator column
+    reportSheet.Columns(col).ColumnWidth = 2
+    col = col + 1
     
     ' Date data (without unique supporters)
     AddDataToReport reportSheet, col, "Month", "Count", "", _
                    dates, dateCounts, campaignUniques, totalDates
     col = col + 2
     
+    ' Add narrow separator column
+    reportSheet.Columns(col).ColumnWidth = 2
+    col = col + 1
+    
     ' Supporter data
     AddSupporterDataToReport reportSheet, col, supporters, supporterCounts, totalSupporters
     
     ' Format the report
     reportSheet.Columns("A:Z").AutoFit
+    
+    ' Ensure separator columns remain narrow
+    reportSheet.Columns("C:C").ColumnWidth = 2
+    
+    ' Set column width for all separator columns
+    Dim i As Long
+    For i = 7 To col Step 3
+        If i < col Then ' Skip the last one which might not be a separator
+            reportSheet.Columns(i).ColumnWidth = 2
+        End If
+    Next i
 End Sub
 
 Private Sub AddDataToReport(reportSheet As Worksheet, startCol As Long, headerText As String, countHeader As String, _
