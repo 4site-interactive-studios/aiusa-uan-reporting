@@ -562,6 +562,20 @@ Private Sub CreateMainReport(startDate As String, endDate As String, _
                            dates() As String, dateCounts() As Long, totalDates As Long, _
                            supporters() As String, supporterCounts() As Long, totalSupporters As Long)
     
+    ' Create a dummy array for reports without unique counts
+    Dim dummyArray() As Long
+    ReDim dummyArray(1 To 1)
+    
+    ' Sort all arrays alphabetically by key before creating the report
+    SortArrays campaignIDs, campaignCounts, campaignUniques, totalCampaigns
+    SortArrays caseNumbers, caseCounts, dummyArray, totalCases
+    SortArrays countries, countryCounts, dummyArray, totalCountries
+    SortArrays topics, topicCounts, dummyArray, totalTopics
+    SortArrays years, yearCounts, dummyArray, totalYears
+    SortArrays types, typeCounts, dummyArray, totalTypes
+    SortArrays dates, dateCounts, dummyArray, totalDates
+    SortArrays supporters, supporterCounts, dummyArray, totalSupporters
+    
     ' Get or create the report sheet
     Dim reportSheet As Worksheet
     Set reportSheet = GetOrCreateSheet("report")
@@ -625,18 +639,18 @@ Private Sub CreateMainReport(startDate As String, endDate As String, _
     reportSheet.Columns(col).ColumnWidth = 2
     col = col + 1
     
-    ' Year data (without unique supporters)
-    AddDataToReport reportSheet, col, "Year", "Count", "", _
-                   years, yearCounts, campaignUniques, totalYears
+    ' Type data (without unique supporters)
+    AddDataToReport reportSheet, col, "Type", "Count", "", _
+                   types, typeCounts, campaignUniques, totalTypes
     col = col + 2
     
     ' Add narrow separator column
     reportSheet.Columns(col).ColumnWidth = 2
     col = col + 1
     
-    ' Type data (without unique supporters)
-    AddDataToReport reportSheet, col, "Type", "Count", "", _
-                   types, typeCounts, campaignUniques, totalTypes
+    ' Year data (without unique supporters)
+    AddDataToReport reportSheet, col, "Year", "Count", "", _
+                   years, yearCounts, campaignUniques, totalYears
     col = col + 2
     
     ' Add narrow separator column
@@ -758,4 +772,41 @@ Private Sub AddSupporterDataToReport(reportSheet As Worksheet, startCol As Long,
     
     ' Format header row
     reportSheet.Range(reportSheet.Cells(1, startCol), reportSheet.Cells(1, startCol + 2)).Interior.ColorIndex = 15
+End Sub
+
+Private Sub SortArrays(ByRef keys() As String, ByRef counts() As Long, ByRef uniqueCounts() As Long, ByVal total As Long)
+    ' Simple bubble sort for the arrays
+    Dim i As Long, j As Long
+    Dim tempKey As String, tempCount As Long, tempUnique As Long
+    Dim hasUniqueData As Boolean
+    
+    ' Check if uniqueCounts is a valid array with data
+    hasUniqueData = False
+    On Error Resume Next
+    If UBound(uniqueCounts) >= total Then hasUniqueData = True
+    On Error GoTo 0
+    
+    For i = 1 To total - 1
+        For j = i + 1 To total
+            ' Sort alphabetically by key
+            If keys(i) > keys(j) Then
+                ' Swap keys
+                tempKey = keys(i)
+                keys(i) = keys(j)
+                keys(j) = tempKey
+                
+                ' Swap counts
+                tempCount = counts(i)
+                counts(i) = counts(j)
+                counts(j) = tempCount
+                
+                ' Swap unique counts if applicable
+                If hasUniqueData Then
+                    tempUnique = uniqueCounts(i)
+                    uniqueCounts(i) = uniqueCounts(j)
+                    uniqueCounts(j) = tempUnique
+                End If
+            End If
+        Next j
+    Next i
 End Sub
