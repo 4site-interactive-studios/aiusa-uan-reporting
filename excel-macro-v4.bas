@@ -3,8 +3,8 @@
 ' DESCRIPTION:
 ' This script processes campaign data from an Excel sheet to generate various reports
 ' tracking supporter engagement across different dimensions like country, case number,
-' topics etc. All dat, expect Campaign Data 32, is expected to be in a sheet named "processed-export".
-' The "export" and "processed-export" sheets can have over 100 columns are expected to be in the same workbook.
+' topics etc. All dat, expect Campaign Data 33, is expected to be in a sheet named "processed-export".
+' The "export" and "processed-export" sheets can have over 100 columns and are expected to be in the same workbook.
 
 ' SHEET REQUIREMENTS:
 ' - "export" sheet with headers:
