@@ -3,7 +3,7 @@
 ' DESCRIPTION:
 ' This script processes campaign data from an Excel sheet to generate various reports
 ' tracking supporter engagement across different dimensions like country, case number,
-' topics etc. All dat, expect Campaign Data 33, is expected to be in a sheet named "processed-export".
+' topics etc. All data is expected to be in a sheet named "processed-export".
 ' The "export" and "processed-export" sheets can have over 100 columns and are expected to be in the same workbook.
 
 ' SHEET REQUIREMENTS:
@@ -20,6 +20,7 @@
 '   * External Reference 8 (Topics)
 '   * External Reference 10 (Year)
 '   * External Reference 10 (Type)
+'   * Campaign Data 33 (URL with Page Title Argument)
 
 
 ' REPORTS GENERATED:
@@ -47,6 +48,7 @@ Private Type ColumnIndices
     Topics As Long
     Year As Long
     Type As Long
+    CampaignData33 As Long
 End Type
 
 ' Main entry point macro that will appear in Excel's macro list
@@ -74,10 +76,10 @@ Public Sub Generate_UAN_Report()
     
     ' Get the export sheet
     Dim wsExport As Worksheet
-    Set wsExport = ThisWorkbook.Sheets("processed-export")
+    Set wsExport = ThisWorkbook.Sheets("export")
     
     If wsExport Is Nothing Then
-        MsgBox "Could not find a sheet named 'processed-export'.", vbExclamation
+        MsgBox "Could not find a sheet named 'export'.", vbExclamation
         GoTo Cleanup
     End If
     
@@ -141,7 +143,8 @@ Private Sub ProcessData(ws As Worksheet, startDate As Date, endDate As Date, has
                "CaseNumber: " & cols.CaseNumber & vbNewLine & _
                "Topics: " & cols.Topics & vbNewLine & _
                "Year: " & cols.Year & vbNewLine & _
-               "Type: " & cols.Type
+               "Type: " & cols.Type & vbNewLine & _
+               "CampaignData33: " & cols.CampaignData33
     
     Debug.Print debugMsg
     
@@ -208,11 +211,30 @@ Private Sub ProcessData(ws As Worksheet, startDate As Date, endDate As Date, has
     ReDim supporters(1 To 1000)
     ReDim supporterCounts(1 To 1000)
     
+    ' Add arrays for page titles
+    Dim pageTitles() As String
+    Dim pageTitleCounts() As Long
+    Dim pageTitleUniqueSupport() As Long
+    Dim totalPageTitles As Long
+    
+    totalPageTitles = 0
+    
+    ' Initialize the arrays
+    ReDim pageTitles(1 To 1000)
+    ReDim pageTitleCounts(1 To 1000)
+    ReDim pageTitleUniqueSupport(1 To 1000)
+    
     ' For tracking unique supporters per campaign
     Dim campaignSupporters() As String
     ReDim campaignSupporters(1 To 10000)
     Dim campaignSupporterCount As Long
     campaignSupporterCount = 0
+    
+    ' For tracking unique supporters per page title
+    Dim pageTitleSupporters() As String
+    ReDim pageTitleSupporters(1 To 10000)
+    Dim pageTitleSupporterCount As Long
+    pageTitleSupporterCount = 0
     
     ' Process data
     Application.StatusBar = "Processing data: 0%"
@@ -220,6 +242,7 @@ Private Sub ProcessData(ws As Worksheet, startDate As Date, endDate As Date, has
     Dim supporterID As String, campaignID As String, caseNumber As String
     Dim country As String, topic As String, typeValue As String, yearValue As String
     Dim campaignDate As Date, monthYear As String
+    Dim pageTitle As String, campaignData33 As String
     
     Dim progress As Double
     
@@ -263,11 +286,102 @@ Private Sub ProcessData(ws As Worksheet, startDate As Date, endDate As Date, has
         ' Get all field values with safe handling
         campaignID = Trim(CStr(ws.Cells(row, cols.CampaignID).Value))
         supporterID = Trim(CStr(ws.Cells(row, cols.SupporterID).Value))
-        caseNumber = Trim(CStr(ws.Cells(row, cols.CaseNumber).Value))
-        country = Trim(CStr(ws.Cells(row, cols.Country).Value))
-        topic = Trim(CStr(ws.Cells(row, cols.Topics).Value))
-        yearValue = Trim(CStr(ws.Cells(row, cols.Year).Value))
-        typeValue = Trim(CStr(ws.Cells(row, cols.Type).Value))
+        
+        ' Extract Country (removing "Country: " prefix)
+        Dim rawCountry As String
+        rawCountry = Trim(CStr(ws.Cells(row, cols.Country).Value))
+        If InStr(1, rawCountry, "Country: ", vbTextCompare) = 1 Then
+            country = Trim(Mid(rawCountry, 9)) ' Remove "Country: " prefix
+        Else
+            country = rawCountry
+        End If
+        
+        ' Extract Case Number (removing "CaseNumber: " prefix)
+        Dim rawCaseNumber As String
+        rawCaseNumber = Trim(CStr(ws.Cells(row, cols.CaseNumber).Value))
+        If InStr(1, rawCaseNumber, "CaseNumber: ", vbTextCompare) = 1 Then
+            caseNumber = Trim(Mid(rawCaseNumber, 12)) ' Remove "CaseNumber: " prefix
+        Else
+            caseNumber = rawCaseNumber
+        End If
+        
+        ' Extract Topics (removing "Topic: " prefix)
+        Dim rawTopic As String
+        rawTopic = Trim(CStr(ws.Cells(row, cols.Topics).Value))
+        If InStr(1, rawTopic, "Topic: ", vbTextCompare) = 1 Then
+            topic = Trim(Mid(rawTopic, 7)) ' Remove "Topic: " prefix
+        Else
+            topic = rawTopic
+        End If
+        
+        ' Extract Year and Type from External Reference 10
+        Dim rawYearType As String
+        rawYearType = Trim(CStr(ws.Cells(row, cols.Year).Value))
+        
+        ' Default empty values
+        yearValue = ""
+        typeValue = ""
+        
+        If InStr(1, rawYearType, "YearType: ", vbTextCompare) = 1 Then
+            ' Remove "YearType: " prefix
+            Dim yearTypeContent As String
+            yearTypeContent = Trim(Mid(rawYearType, 10))
+            
+            ' Check if there's a comma (separating year and type)
+            Dim commaPos As Long
+            commaPos = InStr(1, yearTypeContent, ",")
+            
+            If commaPos > 0 Then
+                ' Extract year (before comma)
+                Dim possibleYear As String
+                possibleYear = Trim(Left(yearTypeContent, commaPos - 1))
+                
+                ' Check if it's a 4-digit year
+                If Len(possibleYear) = 4 And IsNumeric(possibleYear) Then
+                    yearValue = possibleYear
+                    ' Type is everything after the comma
+                    typeValue = Trim(Mid(yearTypeContent, commaPos + 1))
+                Else
+                    ' If not a year, it's all type
+                    typeValue = yearTypeContent
+                End If
+            Else
+                ' No comma - check if it's a 4-digit year
+                If Len(yearTypeContent) = 4 And IsNumeric(yearTypeContent) Then
+                    yearValue = yearTypeContent
+                Else
+                    ' If not a year, it's type
+                    typeValue = yearTypeContent
+                End If
+            End If
+        Else
+            ' No prefix, use raw value
+            If Len(rawYearType) = 4 And IsNumeric(rawYearType) Then
+                yearValue = rawYearType
+            Else
+                typeValue = rawYearType
+            End If
+        End If
+        
+        ' Get Campaign Data 33 value and extract page title
+        If cols.CampaignData33 > 0 Then
+            campaignData33 = Trim(CStr(ws.Cells(row, cols.CampaignData33).Value))
+            pageTitle = ExtractPageTitle(campaignData33)
+            
+            ' Page title counts
+            If pageTitle <> "" Then
+                totalPageTitles = CountOccurrences(pageTitles, pageTitleCounts, totalPageTitles, pageTitle)
+                
+                ' Track page title-supporter pairs for unique counts
+                If supporterID <> "" Then
+                    pageTitleSupporterCount = pageTitleSupporterCount + 1
+                    If pageTitleSupporterCount > UBound(pageTitleSupporters) Then
+                        ReDim Preserve pageTitleSupporters(1 To UBound(pageTitleSupporters) * 2)
+                    End If
+                    pageTitleSupporters(pageTitleSupporterCount) = pageTitle & "|" & supporterID
+                End If
+            End If
+        End If
         
         ' Campaign counts
         If campaignID <> "" Then
@@ -338,6 +452,11 @@ NextRow:
         campaignUniqueSupport(i) = CountUniqueSupporters(campaignIDs(i), campaignSupporters, campaignSupporterCount)
     Next i
     
+    ' Calculate unique supporters per page title
+    For i = 1 To totalPageTitles
+        pageTitleUniqueSupport(i) = CountUniqueSupporters(pageTitles(i), pageTitleSupporters, pageTitleSupporterCount)
+    Next i
+    
     ' After processing all data, create the report sheet with dates
     Application.StatusBar = "Creating reports..."
     
@@ -385,6 +504,9 @@ NextRow:
                     dates, dateCounts, totalDates, _
                     supporters, supporterCounts, totalSupporters
     
+    ' Create the page title report
+    CreatePageTitleReport pageTitles, pageTitleCounts, pageTitleUniqueSupport, totalPageTitles
+    
     ' Create enhanced confirmation message
     Dim confirmMsg As String
     confirmMsg = "Your UAN Report has been updated!" & vbNewLine & vbNewLine & _
@@ -396,6 +518,7 @@ NextRow:
                 "Results (Unique / Total):" & vbNewLine & _
                 "Supporters: " & totalSupporters & " / " & Application.WorksheetFunction.Sum(supporterCounts) & vbNewLine & _
                 "Campaigns: " & totalCampaigns & " / " & Application.WorksheetFunction.Sum(campaignCounts) & vbNewLine & _
+                "Page Titles: " & totalPageTitles & " / " & Application.WorksheetFunction.Sum(pageTitleCounts) & vbNewLine & _
                 "Case Numbers: " & totalCases & " / " & Application.WorksheetFunction.Sum(caseCounts) & vbNewLine & _
                 "Countries: " & totalCountries & " / " & Application.WorksheetFunction.Sum(countryCounts) & vbNewLine & _
                 "Topics: " & totalTopics & " / " & Application.WorksheetFunction.Sum(topicCounts) & vbNewLine & _
@@ -412,6 +535,7 @@ NextRow:
     Debug.Print "Total Types: " & totalTypes
     Debug.Print "Total Dates: " & totalDates
     Debug.Print "Total Supporters: " & totalSupporters
+    Debug.Print "Total Page Titles: " & totalPageTitles
 End Sub
 
 Private Function GetColumnIndices(ws As Worksheet) As ColumnIndices
@@ -419,7 +543,7 @@ Private Function GetColumnIndices(ws As Worksheet) As ColumnIndices
     
     ' Print all column headers for debugging
     Dim i As Long
-    For i = 1 To 20 ' Check first 20 columns
+    For i = 1 To 50 ' Check first 50 columns
         If ws.Cells(1, i).Value <> "" Then
             Debug.Print i & ": " & ws.Cells(1, i).Value
         End If
@@ -434,11 +558,16 @@ Private Function GetColumnIndices(ws As Worksheet) As ColumnIndices
     
     cols.SupporterID = WorksheetFunction.Match("Supporter ID", ws.Rows(1), 0)
     cols.SupporterEmail = WorksheetFunction.Match("Supporter Email", ws.Rows(1), 0)
-    cols.Country = WorksheetFunction.Match("External Reference 6 (Country)", ws.Rows(1), 0)
-    cols.CaseNumber = WorksheetFunction.Match("External Reference 7 (Case Number)", ws.Rows(1), 0)
-    cols.Topics = WorksheetFunction.Match("External Reference 8 (Topics)", ws.Rows(1), 0)
-    cols.Year = WorksheetFunction.Match("External Reference 10 (Year)", ws.Rows(1), 0)
-    cols.Type = WorksheetFunction.Match("External Reference 10 (Type)", ws.Rows(1), 0)
+    
+    ' Find the External Reference columns
+    cols.Country = WorksheetFunction.Match("External Reference 6", ws.Rows(1), 0)
+    cols.CaseNumber = WorksheetFunction.Match("External Reference 7", ws.Rows(1), 0)
+    cols.Topics = WorksheetFunction.Match("External Reference 8", ws.Rows(1), 0)
+    cols.Year = WorksheetFunction.Match("External Reference 10", ws.Rows(1), 0)
+    cols.Type = cols.Year ' Both Year and Type are in External Reference 10
+    
+    cols.CampaignData33 = WorksheetFunction.Match("Campaign Data 33", ws.Rows(1), 0)
+    If cols.CampaignData33 = 0 Then cols.CampaignData33 = WorksheetFunction.Match("*Campaign*Data*33*", ws.Rows(1), 0)
     On Error GoTo 0
     
     ' Validate that all required columns were found
@@ -449,11 +578,11 @@ Private Function GetColumnIndices(ws As Worksheet) As ColumnIndices
     If cols.CampaignDate = 0 Then missingColumns = missingColumns & "Campaign Date, "
     If cols.SupporterID = 0 Then missingColumns = missingColumns & "Supporter ID, "
     If cols.SupporterEmail = 0 Then missingColumns = missingColumns & "Supporter Email, "
-    If cols.Country = 0 Then missingColumns = missingColumns & "Country, "
-    If cols.CaseNumber = 0 Then missingColumns = missingColumns & "Case Number, "
-    If cols.Topics = 0 Then missingColumns = missingColumns & "Topics, "
-    If cols.Year = 0 Then missingColumns = missingColumns & "Year, "
-    If cols.Type = 0 Then missingColumns = missingColumns & "Type, "
+    If cols.Country = 0 Then missingColumns = missingColumns & "External Reference 6, "
+    If cols.CaseNumber = 0 Then missingColumns = missingColumns & "External Reference 7, "
+    If cols.Topics = 0 Then missingColumns = missingColumns & "External Reference 8, "
+    If cols.Year = 0 Then missingColumns = missingColumns & "External Reference 10, "
+    ' Campaign Data 33 is not required, so we don't check for it
     
     If missingColumns <> "" Then
         missingColumns = Left(missingColumns, Len(missingColumns) - 2) ' Remove trailing comma and space
@@ -628,6 +757,46 @@ Private Sub CreateMainReport(startDate As String, endDate As String, _
     reportSheet.Columns(col).ColumnWidth = 2
     col = col + 1
     
+    ' Get page title data from the by-page-title sheet
+    Dim pageTitleSheet As Worksheet
+    Dim pageTitles() As String
+    Dim pageTitleCounts() As Long
+    Dim pageTitleUniques() As Long
+    Dim totalPageTitles As Long
+    
+    On Error Resume Next
+    Set pageTitleSheet = ThisWorkbook.Sheets("by-page-title")
+    On Error GoTo 0
+    
+    If Not pageTitleSheet Is Nothing Then
+        ' Count the number of page titles
+        totalPageTitles = WorksheetFunction.CountA(pageTitleSheet.Range("A:A")) - 1 ' Subtract header
+        
+        If totalPageTitles > 0 Then
+            ReDim pageTitles(1 To totalPageTitles)
+            ReDim pageTitleCounts(1 To totalPageTitles)
+            ReDim pageTitleUniques(1 To totalPageTitles)
+            
+            ' Read data from the page title sheet
+            Dim i As Long
+            For i = 1 To totalPageTitles
+                ' Apply SmartTitleCase to ensure consistent formatting
+                pageTitles(i) = SmartTitleCase(pageTitleSheet.Cells(i + 1, 1).Value)
+                pageTitleCounts(i) = pageTitleSheet.Cells(i + 1, 2).Value
+                pageTitleUniques(i) = pageTitleSheet.Cells(i + 1, 3).Value
+            Next i
+            
+            ' Add page title data to report
+            AddDataToReport reportSheet, col, "Page Title", "Count", "Unique Supporters", _
+                           pageTitles, pageTitleCounts, pageTitleUniques, totalPageTitles
+            col = col + 3
+            
+            ' Add narrow separator column
+            reportSheet.Columns(col).ColumnWidth = 2
+            col = col + 1
+        End If
+    End If
+    
     ' Case number data (without unique supporters)
     AddDataToReport reportSheet, col, "Case Number", "Count", "", _
                    caseNumbers, caseCounts, campaignUniques, totalCases
@@ -686,18 +855,28 @@ Private Sub CreateMainReport(startDate As String, endDate As String, _
     AddSupporterDataToReport reportSheet, col, supporters, supporterCounts, totalSupporters
     
     ' Format the report
+    ' First, auto-fit all columns to ensure content is properly sized
     reportSheet.Columns("A:Z").AutoFit
     
-    ' Ensure separator columns remain narrow
+    ' Then explicitly set the width for separator columns
     reportSheet.Columns("C:C").ColumnWidth = 2
     
     ' Set column width for all separator columns
-    Dim i As Long
-    For i = 7 To col Step 3
-        If i < col Then ' Skip the last one which might not be a separator
-            reportSheet.Columns(i).ColumnWidth = 2
+    Dim j As Long
+    For j = 7 To col Step 3
+        If j < col Then ' Skip the last one which might not be a separator
+            reportSheet.Columns(j).ColumnWidth = 2
         End If
-    Next i
+    Next j
+    
+    ' Now auto-fit all columns that have headers (content columns)
+    Dim contentCol As Long
+    For contentCol = 1 To col
+        ' If the column has a header, it's a content column and should be auto-sized
+        If Trim(reportSheet.Cells(1, contentCol).Value) <> "" Then
+            reportSheet.Columns(contentCol).AutoFit
+        End If
+    Next contentCol
 End Sub
 
 Private Sub AddDataToReport(reportSheet As Worksheet, startCol As Long, headerText As String, countHeader As String, _
@@ -838,4 +1017,162 @@ Private Sub SortArrays(ByRef keys() As String, ByRef counts() As Long, ByRef uni
             End If
         Next j
     Next i
+End Sub
+
+' Function to extract and decode page title from URL
+Private Function ExtractPageTitle(urlString As String) As String
+    ' Default return value
+    ExtractPageTitle = ""
+    
+    ' Check if the URL string is empty
+    If urlString = "" Then Exit Function
+    
+    ' Look for page_title parameter
+    Dim startPos As Long
+    startPos = InStr(1, urlString, "page_title=")
+    
+    If startPos > 0 Then
+        ' Move to the start of the value
+        startPos = startPos + 11 ' Length of "page_title="
+        
+        ' Find the end of the value (either & or end of string)
+        Dim endPos As Long
+        endPos = InStr(startPos, urlString, "&")
+        
+        ' If no & found, use the end of the string
+        If endPos = 0 Then endPos = Len(urlString) + 1
+        
+        ' Extract the encoded page title
+        Dim encodedTitle As String
+        encodedTitle = Mid(urlString, startPos, endPos - startPos)
+        
+        ' Decode the URL-encoded title, strip unwanted characters, and apply title casing
+        Dim decodedTitle As String
+        decodedTitle = URLDecode(encodedTitle)
+        decodedTitle = Replace(decodedTitle, ",ÄôS", "'s")
+        decodedTitle = Replace(decodedTitle, "Äô", "'")
+        decodedTitle = Replace(decodedTitle, "¬", "")
+        decodedTitle = Replace(decodedTitle, "†", "")
+        decodedTitle = Replace(decodedTitle, "‚äôs", "'s")
+        decodedTitle = Replace(decodedTitle, "‚'", "'")
+        decodedTitle = Replace(decodedTitle, "‚", "'")  ' Replace just the single character
+        
+        ExtractPageTitle = SmartTitleCase(decodedTitle)
+    End If
+End Function
+
+' Function to apply smart title casing to text
+Private Function SmartTitleCase(ByVal Txt As String) As String
+    Dim words As Variant
+    Dim i As Integer
+    Dim result As String
+    
+    ' Convert the text to lowercase, then split into words
+    words = Split(LCase(Txt), " ")
+    
+    ' List of words to keep lowercase (articles, conjunctions, prepositions)
+    Dim lowerWords As String
+    lowerWords = "|a|an|and|as|at|but|by|for|if|in|nor|of|on|or|so|the|to|up|with|"
+    
+    ' Capitalize each word unless it's in the exception list
+    For i = LBound(words) To UBound(words)
+        ' Check if the word is in our lowercase list
+        ' First word is always capitalized regardless
+        If i = 0 Or InStr(1, lowerWords, "|" & LCase(words(i)) & "|") = 0 Then
+            ' Capitalize first letter
+            If Len(words(i)) > 0 Then
+                words(i) = UCase(Left(words(i), 1)) & Mid(words(i), 2)
+            End If
+        End If
+    Next i
+    
+    ' Rejoin words into a single string
+    SmartTitleCase = Join(words, " ")
+End Function
+
+' Function to decode URL-encoded strings
+Private Function URLDecode(encodedString As String) As String
+    Dim result As String
+    result = encodedString
+    
+    ' Replace + with space
+    result = Replace(result, "+", " ")
+    
+    ' Replace %xx hex codes with their character equivalents
+    Dim i As Long, hexCode As String, charCode As Long
+    i = 1
+    
+    Do While i <= Len(result)
+        If Mid(result, i, 1) = "%" And i + 2 <= Len(result) Then
+            hexCode = Mid(result, i + 1, 2)
+            
+            ' Try to convert hex to decimal
+            On Error Resume Next
+            charCode = CLng("&H" & hexCode)
+            
+            If Err.Number = 0 Then
+                ' Replace the %xx with the character
+                result = Left(result, i - 1) & Chr(charCode) & Mid(result, i + 3)
+            Else
+                ' If conversion failed, just move on
+                i = i + 1
+            End If
+            On Error GoTo 0
+        Else
+            i = i + 1
+        End If
+    Loop
+    
+    URLDecode = result
+End Function
+
+' Create the page title report sheet
+Private Sub CreatePageTitleReport(pageTitles() As String, pageTitleCounts() As Long, pageTitleUniques() As Long, totalPageTitles As Long)
+    ' Sort the arrays first
+    SortArrays pageTitles, pageTitleCounts, pageTitleUniques, totalPageTitles
+    
+    ' Get or create the report sheet
+    Dim reportSheet As Worksheet
+    Set reportSheet = GetOrCreateSheet("by-page-title")
+    
+    ' Clear the sheet
+    reportSheet.Cells.Clear
+    
+    ' Add headers
+    reportSheet.Range("A1").Value = "Page Title"
+    reportSheet.Range("B1").Value = "Count"
+    reportSheet.Range("C1").Value = "Unique Supporters"
+    
+    ' Format headers - only make them bold, no background color or borders
+    reportSheet.Range("A1:C1").Font.Bold = True
+    
+    ' Right-align count columns
+    reportSheet.Range("B1").HorizontalAlignment = xlRight
+    reportSheet.Range("C1").HorizontalAlignment = xlRight
+    
+    ' Write data
+    Dim row As Long
+    row = 2
+    
+    Dim i As Long
+    For i = 1 To totalPageTitles
+        ' Copy page title
+        reportSheet.Cells(row, 1).Value = pageTitles(i)
+        
+        ' Copy count
+        reportSheet.Cells(row, 2).Value = pageTitleCounts(i)
+        
+        ' Copy unique supporters
+        reportSheet.Cells(row, 3).Value = pageTitleUniques(i)
+        
+        row = row + 1
+    Next i
+    
+    ' Format data - right-align count columns but no borders
+    If row > 2 Then
+        reportSheet.Range("B2:C" & (row - 1)).HorizontalAlignment = xlRight
+    End If
+    
+    ' Auto-fit columns
+    reportSheet.Columns("A:C").AutoFit
 End Sub
