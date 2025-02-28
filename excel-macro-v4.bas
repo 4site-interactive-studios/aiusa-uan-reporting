@@ -917,7 +917,7 @@ Private Sub AddDataToReport(reportSheet As Worksheet, startCol As Long, headerTe
     End If
     
     ' Format header row
-    reportSheet.Range(reportSheet.Cells(1, startCol), reportSheet.Cells(1, startCol + IIf(uniqueHeader <> "", 2, 1))).Interior.ColorIndex = 15
+    reportSheet.Range(reportSheet.Cells(1, startCol), reportSheet.Cells(1, startCol + If(uniqueHeader <> "", 2, 1))).Interior.ColorIndex = 15
 End Sub
 
 Private Sub AddSupporterDataToReport(reportSheet As Worksheet, startCol As Long, supporters() As String, counts() As Long, total As Long)
@@ -1090,11 +1090,12 @@ Private Function URLDecode(encodedString As String) As String
         If Mid(result, i, 1) = "%" And i + 2 <= Len(result) Then
             hexCode = Mid(result, i + 1, 2)
             
-            ' Try to convert hex to decimal
+            ' Try to convert hex to decimal - modify for Mac compatibility
             On Error Resume Next
-            charCode = CLng("&H" & hexCode)
+            ' Use Val instead of CLng with &H for better Mac compatibility
+            charCode = Val("&H" & hexCode)
             
-            If Err.Number = 0 Then
+            If Err.Number = 0 And charCode > 0 Then
                 ' Replace the %xx with the character
                 result = Left(result, i - 1) & Chr(charCode) & Mid(result, i + 3)
             Else
